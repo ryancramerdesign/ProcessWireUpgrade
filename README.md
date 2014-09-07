@@ -20,12 +20,13 @@ overwrites during the upgrade. Should an upgrade fail for some
 reason, you can manually restore from the backups should you
 need to. 
 
+If your ProcessWire version is new enough to have the 
+WireDatabaseBackup class (PW 2.4.14+) then this module will
+also give you the option of backing up your database. 
+
 ## Requirements
 
 ProcessWire 2.3.4 or newer
 
-## To-do
-
-Make database backups when WireDatabaseBackup class is available.
 
 
