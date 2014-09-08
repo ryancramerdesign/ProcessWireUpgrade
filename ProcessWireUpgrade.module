@@ -23,27 +23,24 @@ class ProcessWireUpgrade extends Process {
 			'summary' => 'Upgrade ProcessWire core to latest master or dev version automatically in the admin.', 
 			'version' => 1, 
 			'author' => 'Ryan Cramer', 
-			'icon' => 'rocket'
+			'icon' => 'coffee'
 			); 
 	}
 
+	const debug = false; 
 	const pageName = 'core-upgrade';
+	const branchesURL = 'https://api.github.com/repos/ryancramerdesign/Processwire/branches';
+	const versionURL = 'https://raw.githubusercontent.com/ryancramerdesign/ProcessWire/{branch}/wire/core/ProcessWire.php'; 
+	const zipURL = 'https://github.com/ryancramerdesign/ProcessWire/archive/{branch}.zip';
 
-	/**
-	 * Info for the branches that we can install
-	 *
-	 */
-	protected $branches = array(
-		'stable' => array(
-			'name' => 'stable', 
-			'zip' => 'https://github.com/ryancramerdesign/ProcessWire/archive/master.zip',
-			'ver' => 'https://raw.githubusercontent.com/ryancramerdesign/ProcessWire/master/wire/core/ProcessWire.php'
-			), 
-		'dev' => array(
-			'name' => 'dev', 
-			'zip' => 'https://github.com/ryancramerdesign/ProcessWire/archive/dev.zip',
-			'ver' => 'https://raw.githubusercontent.com/ryancramerdesign/ProcessWire/dev/wire/core/ProcessWire.php',
-			)
+	protected $indexHashes = array(
+		'2.4.0' => 'ae121ccc9c14a2cd5fa57e8786bdbb3f', 
+		'2.5.0' => '9b20ce2898be505608d54a1e0dd81215', 
+		);
+
+	protected $htaccessHashes = array(
+		'2.4.0' => '5114479740cb1e79a8004f3eddeecb54', 
+		'2.5.0' => 'f8229ef5e26221226844d461e1a4d8d2', 
 		);
 
 	/**
@@ -92,39 +89,75 @@ class ProcessWireUpgrade extends Process {
 	}
 
 	/**
-	 * Get the current version associated with the selected branch
+	 * Get all available branches with info for each
 	 *
 	 */
-	protected function getBranchVersion($branch) {
-		$info = $this->branches[$branch]; 
+	protected function getBranches() {
+
+		if(!$this->input->get->refresh_branches) { 
+			$branches = $this->session->get('ProcessWireUpgrade_branches'); 
+			if($branches && count($branches)) return $branches; 
+		}
+
+		$branches = array();
 		$http = new WireHttp();
-		$data = $http->get($info['ver']); 
-		if(empty($data)) throw new WireException("Unable to load $info[ver]"); 
+		$http->setHeader('User-Agent', 'ProcessWireUpgrade'); 
+		$json = $http->get(self::branchesURL); 
+		if(!$json) throw new WireException("Error loading GitHub branches " . self::branchesURL); 
 
-		if(!preg_match_all('/const\s+version(Major|Minor|Revision)\s*=\s*(\d+)/', $data, $matches)) {
-			throw new WireException("Unable to find version information from branch."); 
+		$data = json_decode($json, true); 
+		if(!$data) throw new WireException("Error JSON decoding GitHub branches $json " . self::branchesURL); 
+
+		$this->message("Retrieved " . count($data) . " branches from GitHub"); 
+
+		foreach($data as $key => $info) {
+			$name = $info['name'];
+			$branch = array(
+				'name' => $name, 
+				'title' => ucfirst($name), 
+				'zipURL' => str_replace('{branch}', $name, self::zipURL), 
+				'version' => '', 
+				'versionURL' => str_replace('{branch}', $name, self::versionURL), 
+				);
+
+			if($name == 'dev') $branch['title'] = 'Development';
+			if($name == 'master') $branch['title'] = 'Stable/Master'; 
+
+			$content = $http->get($branch['versionURL']); 
+			if(!preg_match_all('/const\s+version(Major|Minor|Revision)\s*=\s*(\d+)/', $content, $matches)) {
+				$branch['version'] = '?';
+				continue; 
+			}
+
+			$version = array();
+			foreach($matches[1] as $key => $var) {
+				$version[$var] = (int) $matches[2][$key];
+			}
+
+			$branch['version'] = "$version[Major].$version[Minor].$version[Revision]";
+			$branches[$name] = $branch;
 		}
 
-		$version = array();
-		foreach($matches[1] as $key => $name) {
-			$version[$name] = (int) $matches[2][$key];
-		}
-
-		$out = "$version[Major].$version[Minor].$version[Revision]";
-		$this->session->set('ProcessWireUpgrade_newVersion', $out); 
-		$this->session->set('ProcessWireUpgrade_oldVersion', $this->config->version); 
-
-		return $out; 
+		$this->session->set('ProcessWireUpgrade_branches', $branches); 
+		return $branches;
 	}
 
 	/**
-	 * Determine the branch from a GET variable and return info array
+	 * Get info for either a specific branch, or for the currently selected branch
 	 *
 	 */
-	protected function getBranch() {
-		$branch = $this->input->get('branch'); 
-		if(empty($branch) || !isset($this->branches[$branch])) $this->session->redirect($this->page->url); 
-		return $this->branches[$branch]; 
+	protected function getBranch($name = '') {
+		$branches = $this->getBranches(); 
+		if(empty($name)) $name = $this->session->get('ProcessWireUpgrade_branch');
+		return isset($branches[$name]) ? $branches[$name] : array();
+	}
+
+	/**
+	 * Set the current branch
+	 *
+	 */
+	protected function setBranch($name) {
+		$this->session->set('ProcessWireUpgrade_branch', $name); 
 	}
 
 	/**
@@ -132,6 +165,18 @@ class ProcessWireUpgrade extends Process {
 	 *
 	 */
 	public function execute() {
+
+		if(self::debug) {
+			$this->message('index.php ' . $this->config->version . ': ' . md5(file_get_contents($this->config->paths->root . 'index.php'))); 
+			$this->message('.htaccess ' . $this->config->version . ': ' . md5(file_get_contents($this->config->paths->root . '.htaccess'))); 
+		}
+
+                if(version_compare(PHP_VERSION, '5.3.8') >= 0) {
+			// good
+                } else {
+			$this->error("Please note that your current PHP version (" . PHP_VERSION . ") is not adequate to upgrade to the latest ProcessWire."); 
+                }
+
 		$out = '';
 
 		if(!$this->config->debug) {
@@ -152,80 +197,23 @@ class ProcessWireUpgrade extends Process {
 			return $out; 
 		}
 
-		$out .= "<h2>ProcessWire Core Upgrade</h2>" . 
-			"<p>Before doing an upgrade, it is a good idea to backup your database. While optional, " . 
-			"we recommend doing this so that you can restore in case something fails during the " . 
-			"upgrade process.</p>";
-	
-		$out .= "<p>Your database is: <strong>{$this->config->dbName}</strong></p>";
-
-		if(class_exists('WireDatabaseBackup')) {
-
-			$out .= "<p>Your version of ProcessWire supports automatic database backups.*</p>";
-			$btn = $this->modules->get('InputfieldButton'); 
-			$btn->href = "./database?backup=1";
-			$btn->value = $this->_('Backup Database Now'); 
-			$btn->icon = 'database';
-			$out .= $btn->render();
-
-			$btn = $this->modules->get('InputfieldButton'); 
-			$btn->href = "./database";
-			$btn->icon = 'angle-right';
-			$btn->value = $this->_('Skip Database Backup'); 
-			$btn->addClass('ui-priority-secondary'); 
-			$out .= $btn->render();
-
-			$out .= "<p class='detail'>*We recommend making another backup on your own too (like with PhpMyAdmin).</p>";
-
-		} else {
-
-			$out .= "<p>Your current version of ProcessWire does not support automatic database backups. " . 
-				"We recommend making a backup of database <u>{$this->config->dbName}</u> " . 
-				"using a tool like PhpMyAdmin. Click the continue button below once you have saved a backup.</p>";
-
-			$btn = $this->modules->get('InputfieldButton'); 
-			$btn->href = "./database";
-			$btn->icon = 'angle-right';
-			$btn->value = $this->_('Continue'); 
-			$btn->addClass('ui-priority-secondary'); 
-			$out .= $btn->render();
-		}	
-
-		return $out; 
-	}
-
-	public function executeDatabase() {
-
-		if($this->input->get->backup && class_exists('WireDatabaseBackup')) {
-			$options = array(
-				'filename' => $this->config->dbName . "-" . $this->config->version . "-" . date('Y-m-d_H-i-s') . ".sql"
-				);
-			$backups = $this->database->backups();
-			$file = $backups->backup($options); 
-			$errors = $backups->errors();
-			if(count($errors)) foreach($errors as $error) $this->error($error); 
-			if($file) {
-				clearstatcache();
-				$bytes = filesize($file); 
-				$file = str_replace($this->config->paths->root, '/', $file); 
-				$this->message(
-					"Backup saved to: $file ($bytes bytes) - " . 
-					"Please note this location should you later need to restore it."); 
-			} else {
-				$this->error("Database backup failed"); 
-			}
-		}
-
-		$out = "<h2>Please select a branch</h2><p>";
-		foreach($this->branches as $name => $info) {
+		$out = "<h2>Please select a branch:</h2><p>";
+		foreach($this->getBranches() as $name => $info) {
 			$btn = $this->modules->get('InputfieldButton'); 
 			$btn->href = "./check?branch=$name";
 			$btn->icon = 'code-fork';
-			$btn->value = ucfirst($name); 
+			$btn->value = "$info[title] - $info[version]"; 
 			$out .= $btn->render();
 		}
-		$out .= "</p>";
 
+		$btn = $this->modules->get('InputfieldButton'); 
+		$btn->href = "./?refresh_branches=1";
+		$btn->icon = 'refresh';
+		$btn->value = "Refresh"; 
+		$btn->addClass('ui-priority-secondary'); 
+		$out .= $btn->render();
+
+		$out .= "</p>";
 		return $out; 
 	}
 
@@ -244,29 +232,38 @@ class ProcessWireUpgrade extends Process {
 	 *
 	 */
 	public function executeCheck() {
-
-		$branch = $this->getBranch();
-		$branchVersion = $this->getBranchVersion($branch['name']); 
-		$currentVersion = $this->config->version; 
-		$result = version_compare($currentVersion, $branchVersion);
+		$name = $this->input->get->branch; 
+		if(empty($name)) throw new WireException("No branch selected"); 
+		$branch = $this->getBranch($name);
+		if(!count($branch)) throw new WireException("Unknown branch"); 
+		$this->setBranch($name); 
+		$result = version_compare($this->config->version, $branch['version']);
 
 		if($result < 0) { 
-			$this->message("The version found ($branchVersion) is newer than the one you currently have ($currentVersion)"); 
+			$msg = "<p>The version found ($branch[version]) is newer than the one you currently have ({$this->config->version}).";
 
 		} else if($result > 0) {
-			$this->message("The version found ($branchVersion) is older than the one you currently have ($currentVersion)"); 
+			$msg = "The version found ($branch[version]) is older than the one you currently have ({$this->config->version}).";
 
 		} else {
-			$this->message("The version found is the same as the one you currently have"); 
+			$msg = "The version found is the same as the one you currently have.";
 		}
 
-		$out = "<h2>Do you want to download and install version $branchVersion?</h2>";
+		$out = "<h2>Do you want to download and install ProcessWire $branch[name] version $branch[version]?</h2><p>$msg</p>";
 		$btn = $this->modules->get('InputfieldButton'); 
-		$btn->href = "./download?branch=$branch[name]";
+		$btn->href = "./download";
 		$btn->value = $this->_('Download Now'); 
 		$btn->icon = 'cloud-download';
 		$out .= $btn->render();
-		$out .= "<p class='detail'>After clicking the button, be patient, as this may take a minute.</p>";
+
+		$btn = $this->modules->get('InputfieldButton'); 
+		$btn->href = "./"; 
+		$btn->value = $this->_('Abort'); 
+		$btn->icon = 'times-circle';
+		$btn->addClass('ui-priority-secondary'); 
+		$out .= $btn->render();
+
+		$out .= "<p class='detail'>After clicking the download button, be patient, as this may take a minute.</p>";
 
 		return $out; 
 	}
@@ -280,26 +277,86 @@ class ProcessWireUpgrade extends Process {
 		$out = '';
 		$error = '';
 		$branch = $this->getBranch();
-		$newVersion = $this->session->ProcessWireUpgrade_newVersion;
+		if(empty($branch)) throw new WireException("No branch selected"); 
 
 		wireMkdir($this->tempPath); 
 		$http = new WireHttp();
-		$zipfile = $http->download($branch['zip'], $this->tempPath . "$branch[name].zip"); 
+		$zipfile = $http->download($branch['zipURL'], $this->tempPath . "$branch[name].zip"); 
 
 		if(!$zipfile || !file_exists($zipfile) || !filesize($zipfile)) {
-			throw new WireException("Unable to download $branch[zip]"); 
+			throw new WireException("Unable to download $branch[zipURL]"); 
 		}
 
-		$out = "<h2>Downloaded version $newVersion (" . number_format(filesize($zipfile)) . " bytes)</h2>"; 
-		$out .= "<p>Downloaded to: <u>" . str_replace($this->config->paths->root, '/', $zipfile) . "</u></p>"; 
-		$btn = $this->modules->get('InputfieldButton'); 
-		$btn->href = "./prepare?branch=$branch[name]";
-		$btn->value = sprintf($this->_('Upgrade to this version (%s)'), $newVersion); 
-		$btn->icon = 'angle-right';
-		$out .= $btn->render();
+		$this->message("Downloaded version $branch[version] (" . number_format(filesize($zipfile)) . " bytes)"); 
+		return $this->session->redirect('./database'); 
+	}
 
-		return $out; 		
-		
+	/**
+	 * Export database or instruct them to do it
+	 *
+	 */
+	public function executeDatabase() {
+
+		$this->session->remove('ProcessWireUpgrade_database'); 
+		$branch = $this->getBranch();
+
+		if($this->input->get->backup && class_exists('WireDatabaseBackup')) {
+			$options = array(
+				'filename' => $this->config->dbName . "-" . $this->config->version . "-" . date('Y-m-d_H-i-s') . ".sql",
+				'description' => "Automatic backup made by ProcessWireUpgrade before upgrading from {$this->config->version} to $branch[version]."
+				);
+			$backups = $this->database->backups();
+			$file = $backups->backup($options); 
+			$errors = $backups->errors();
+			if(count($errors)) foreach($errors as $error) $this->error($error); 
+			if($file) {
+				clearstatcache();
+				$bytes = filesize($file); 
+				$file = str_replace($this->config->paths->root, '/', $file); 
+				$this->message(
+					"Backup saved to: $file ($bytes bytes) - " . 
+					"Please note this location should you later need to restore it."); 
+				$this->session->set('ProcessWireUpgrade_database', $file); 
+			} else {
+				$this->error("Database backup failed"); 
+			}
+			return $this->session->redirect('./prepare'); 
+		}
+
+		$out = "<h2>Database Backup</h2>";
+
+		if(class_exists('WireDatabaseBackup')) {
+
+			$out .= "<p>Your version of ProcessWire supports automatic database backups.*</p>";
+			$btn = $this->modules->get('InputfieldButton'); 
+			$btn->href = "./database?backup=1";
+			$btn->value = $this->_('Backup Database Now'); 
+			$btn->icon = 'database';
+			$out .= $btn->render();
+
+			$btn = $this->modules->get('InputfieldButton'); 
+			$btn->href = "./prepare";
+			$btn->icon = 'angle-right';
+			$btn->value = $this->_('Skip Database Backup'); 
+			$btn->addClass('ui-priority-secondary'); 
+			$out .= $btn->render();
+
+			$out .= "<p class='detail'>*We recommend making another backup on your own too (like with PhpMyAdmin).</p>";
+
+		} else {
+
+			$out .= "<p>Your current version of ProcessWire does not support automatic database backups. " . 
+				"We recommend making a backup of database <u>{$this->config->dbName}</u> " . 
+				"using a tool like PhpMyAdmin. Click the button below once you have saved a backup.</p>";
+
+			$btn = $this->modules->get('InputfieldButton'); 
+			$btn->href = "./prepare";
+			$btn->icon = 'angle-right';
+			$btn->value = $this->_('Confirm'); 
+			$out .= $btn->render();
+		}	
+
+		return $out; 
 	}
 
 	/**
@@ -310,14 +367,15 @@ class ProcessWireUpgrade extends Process {
 
 		$error = '';
 		$branch = $this->getBranch();
+		if(empty($branch)) throw new WireException("No branch selected"); 
 		$zipfile = $this->tempPath . "$branch[name].zip"; // site/assets/cache/ProcessWireUpgrade/branch-dev.zip
 
 		if(!file_exists($zipfile)) throw new WireException("Unable to locate ZIP: $zipfile"); 
 		$files = wireUnzipFile($zipfile, $this->tempPath); 
 		if(!count($files)) $error = "No files were found in $zipfile";
 
-		$oldVersion = $this->session->ProcessWireUpgrade_oldVersion;
-		$newVersion = $this->session->ProcessWireUpgrade_newVersion;
+		$oldVersion = $this->config->version;
+		$newVersion = $branch['version'];
 
 		$rootPath = dirname(rtrim($this->wirePath, '/')) . '/'; 
 		$rootTempPath = $this->tempPath;  // site/assets/cache/ProcessWireUpgrade/
@@ -328,6 +386,9 @@ class ProcessWireUpgrade extends Process {
 		$htaccessFile = $rootPath . ".htaccess"; // /path/to/root/.htaccess
 		$indexNewName = "index-$newVersion.php"; // index-2.5.0.php
 		$htaccessNewName = "htaccess-$newVersion.txt"; // htaccess-2.5.0.txt
+
+		$indexVersion = array_search(md5(file_get_contents($rootPath . 'index.php')), $this->indexHashes); 
+		$htaccessVersion = array_search(md5(file_get_contents($rootPath . '.htaccess')), $this->htaccessHashes); 
 	
 		$rootWritable = is_writable($rootPath) && is_writable($rootPath . "wire/"); 
 
@@ -377,23 +438,47 @@ class ProcessWireUpgrade extends Process {
 			"<p>We have prepared copies of upgrade files for installation. At this point, " . 
 			"you may install them yourself by replacing the existing <u>/wire/</u> directory, and " . 
 			"optionally <u>index.php</u> and <u>.htaccess</u> files with the new versions indicated. ";
+
 		if($rootWritable) $out .= "Or, since your file system is writable, we can install them for you.";
 		$out .= "</p>"; 
 
+		if($indexVersion) {
+			$out .= "<p>Your <u>index.php</u> file is confirmed identical to the one included " . 
+				"with ProcessWire version $indexVersion so it should be safe to replace " . 
+				"without further analysis.</p>";
+		} else {
+			$out .= "<p>We have detected that your <u>index.php</u> file may contain site-specific " . 
+				"customizations. Please double check before replacing it.</p>";
+		}
+
+		if($htaccessVersion) {
+			$out .= "<p>Your <u>.htaccess</u> file is confirmed identical to the one included " . 
+				"with ProcessWire version $htaccessVersion so it should be safe to replace " . 
+				"without further analysis.</p>";
+		} else {
+			$out .= "<p>We have detected that your <u>.htaccess</u> file may contain site-specific " . 
+				"customizations. Please double check before replacing it.</p>";
+		}
+
 		if($rootWritable) {
 
-			$out .= "<h2>Install new core files</h2>" . 
-				"<p>Check the boxes below for what you'd like us to install. " . 
-				"Since <u>.htaccess</u> files may have site-specific customizations, you may " .
-				"consider handling that one manually, unless you know it hasn't been modified.</p>";
+			$indexChecked = $indexVersion ? "checked" : "";
+			$htaccessChecked = $htaccessVersion ? "checked" : "";
 
-			$out .= "<form action='./install/' method='post'><div class='InputfieldContent'>" . 
+			$out .= "<h2>Install new core files</h2><p>" . 
+				"Check the boxes below for what you'd like us to install. ";
+
+			if(empty($htaccessChecked)) $out .= 
+				"Since the <u>.htaccess</u> file may have site-specific customizations, you may " .
+				"consider handling that one manually, unless you know it hasn't been modified.";
+
+			$out .= "</p><form action='./install/' method='post'><div class='InputfieldContent'>" . 
 				"<p>" . 
 				"<label><input type='checkbox' name='wire' checked value='1' /> Install new core /wire/ directory " . 
 				"<span class='detail'>(old will be renamed to /.wire-$oldVersion/)</span></label><br />" . 
-				"<label><input type='checkbox' name='index' value='1' /> Install new index.php file " . 
+				"<label><input type='checkbox' name='index' value='1' $indexChecked /> Install new index.php file " . 
 				"<span class='detail'>(old will be renamed to .index-$oldVersion.php)</span></label><br />" . 
-				"<label><input type='checkbox' name='htaccess' value='1' /> Install new .htaccess file " . 
+				"<label><input type='checkbox' name='htaccess' value='1' $htaccessChecked /> Install new .htaccess file " . 
 				"<span class='detail'>(old will be renamed to .htaccess-$oldVersion)</span></label>" . 
 				"<p>";
 
@@ -402,20 +487,20 @@ class ProcessWireUpgrade extends Process {
 			$btn->value = $this->_('Install'); 
 			$btn->icon = 'angle-right';
 			$out .= $btn->render(); 
-			$out .= "</div></form>";
+			$out .= "</p></div></form>";
 
 		} else {
 			// root not writable
 
 			$backupInfo = array(
-				"<u>/wire/</u>" => "<u>/.wire-$oldVersion/</u>", 
-				"<u>/index.php</u>" => "<u>/.index-$oldVersion.php</u><span class='detail'>*</span>", 
-				"<u>/.htaccess</u>" => "<u>/.htaccess-$oldVersion</u><span class='detail'>*</span>", 
+				"<u>wire</u>" => "<u>.wire-$oldVersion</u>", 
+				"<u>index.php</u>" => "<u>.index-$oldVersion.php</u> <span class='detail'>*</span>", 
+				"<u>.htaccess</u>" => "<u>.htaccess-$oldVersion</u> <span class='detail'>*</span>", 
 				);
 			$renameInfo = array(
-				"<u>$wireNewPath</u>" => "<u>/wire/</u>",
-				"<u>$indexNewFile</u>" => "<u>/index.php</u><span class='detail'>*</span>", 
-				"<u>$htaccessNewFile</u>" => "<u>/.htaccess</u> <span class='detail'>*</span>", 
+				"<u>" . rtrim($wireNewPath, '/') . "</u>" => "<u>/wire</u>",
+				"<u>$indexNewFile</u>" => "<u>index.php</u> <span class='detail'>*</span>", 
+				"<u>$htaccessNewFile</u>" => "<u>.htaccess</u> <span class='detail'>*</span>", 
 				);
 
 			$out .= "<p>Your file system is not writable so we can't automatically " . 
@@ -452,30 +537,6 @@ class ProcessWireUpgrade extends Process {
 		return $out; 
 	}
 
-	protected function completionNotes() {
-
-		$frontURL = $this->config->urls->root; 
-		$adminURL = $this->config->urls->admin;
-
-		$out = "<p>
-			Test out both the <a target='_blank' href='$frontURL'>front-end</a> and 
-			<a target='_blank' href='$adminURL'>admin</a> of your site in full 
-			to make sure everything works. If you encounter an error message, hit reload in 
-			your browser, as it may take one or two requests for ProcessWire to populate 
-			any necessary database schema changes. Should the upgrade fail for some reason,
-			undo the rename steps mentioned above to restore your previous version files
-			and <a href='http://processwire.com/talk/' target='_blank'>contact us</a> for support. 
-			</p>
-			";
-
-		if($this->config->debug) {
-			$out .= "<p><em>For production sites, remember to turn off debug " . 
-				"mode once your upgrade is complete.</em></p>"; 
-		}
-
-		return $out; 
-	}
-
 	/**
 	 * Install prepared files
 	 *
@@ -483,8 +544,10 @@ class ProcessWireUpgrade extends Process {
 	public function executeInstall() {
 
 		if(!$this->input->post('submit_install')) throw new WireException('No form received'); 
-		$oldVersion = $this->session->ProcessWireUpgrade_oldVersion;
-		$newVersion = $this->session->ProcessWireUpgrade_newVersion;
+		$branch = $this->getBranch();
+		if(empty($branch)) throw new WireException("No branch selected"); 
+		$oldVersion = $this->config->version;
+		$newVersion = $branch['version'];
 		$rootPath = dirname(rtrim($this->wirePath, '/')) . '/'; 
 		$renames = array();
 
@@ -508,6 +571,66 @@ class ProcessWireUpgrade extends Process {
 		$out = "<h2>Upgrade completed</h2>";					
 		$out .= "<p><strong>Now double check that everything works before you leave this page.</strong></p>"; 
 		$out .= $this->completionNotes();
+
+		return $out; 
+	}
+
+	/**
+	 * Completion notes
+	 *
+	 */
+	protected function completionNotes() {
+
+		$frontURL = $this->config->urls->root; 
+		$adminURL = $this->config->urls->admin;
+		$branch = $this->getBranch();
+		$newVersion = $branch['version']; 
+		$oldVersion = $this->config->version; 
+		$dbFile = $this->session->get('ProcessWireUpgrade_database'); 
+		$dbNote = '';
+		if($dbFile) $dbNote = "Your database was backed up to this file: $dbFile";
+	
+		$out = "<p>Test out both the <a target='_blank' href='$frontURL'>front-end</a> and 
+			<a target='_blank' href='$adminURL'>admin</a> of your site in full 
+			to make sure everything works.</p>
+
+			<p>The installed files carry the permissions defined in your /site/config.php file
+			which are {$this->config->chmodDir} for directories and {$this->config->chmodFile}
+			for files. Double check that these are safe with your web host, especially in a 
+			shared hosting environment.</p>
+			";
+
+		if($this->config->debug) {
+			$out .= "<p><em>For production sites, remember to turn off debug mode once your 
+				 upgrade is complete.</em></p>"; 
+		}
+
+		$out .= "
+			<p><strong>If your upgrade did not work&hellip;</strong></p>
+
+			<p>If you encounter an error message, hit reload in your browser 2-3 times, as it may take a couple of 
+			requests for ProcessWire to apply any necessary database schema changes. Should you determine that
+			the upgrade failed for some reason and you want to revert back to the previous version, here are the
+			steps to undo what was just applied.</p>
+
+			<p>First you would remove the installed updates by renaming or deleting them:</p>
+
+			<ul class='bullets'>
+			<li>Delete <u>wire</u> directory OR rename it to <u>.wire-$newVersion</u></li>
+			<li>If you replaced the .htaccess file: Delete <u>.htaccess</u> OR rename it to <u>.htaccess-$newVersion</u></li>
+			<li>If you replaced the index.php file: Delete <u>index.php</u> OR rename it to <u>.index-$newVersion.php</u></li>
+			</ul>
+
+			<p>Next you would restore the backed up versions:</p>
+
+			<ul class='bullets'>
+			<li>Rename directory <u>.wire-$oldVersion</u> to <u>wire</u></li>
+			<li>If applicable: Rename <u>.htaccess-$oldVersion</u> to <u>.htaccess</u></li>
+			<li>If applicable: Rename <u>.index-$oldVersion.php</u> to <u>index.php</u></li>
+			<li>If necessary: restore the database you backed up earlier. $dbNote</li>
+			</ul>
+			";
+
 
 		return $out; 
 	}
