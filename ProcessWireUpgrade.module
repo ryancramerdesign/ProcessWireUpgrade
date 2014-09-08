@@ -85,6 +85,7 @@ class ProcessWireUpgrade extends Process {
 	public function init() {
 		if($this->config->demo) throw new WireException("This module cannot be used in demo mode"); 
 		if(!$this->user->isSuperuser()) throw new WireException("This module requires superuser"); 
+		set_time_limit(3600); 
 		parent::init();
 	}
 
@@ -240,13 +241,13 @@ class ProcessWireUpgrade extends Process {
 		$result = version_compare($this->config->version, $branch['version']);
 
 		if($result < 0) { 
-			$msg = "<p>The version found ($branch[version]) is newer than the one you currently have ({$this->config->version}).";
+			$msg = "<p>The available version ($branch[version]) is newer than the one you currently have ({$this->config->version}).";
 
 		} else if($result > 0) {
-			$msg = "The version found ($branch[version]) is older than the one you currently have ({$this->config->version}).";
+			$msg = "The available version ($branch[version]) is older than the one you currently have ({$this->config->version}).";
 
 		} else {
-			$msg = "The version found is the same as the one you currently have.";
+			$msg = "The available found is the same as the one you currently have.";
 		}
 
 		$out = "<h2>Do you want to download and install ProcessWire $branch[name] version $branch[version]?</h2><p>$msg</p>";
@@ -341,7 +342,7 @@ class ProcessWireUpgrade extends Process {
 			$btn->addClass('ui-priority-secondary'); 
 			$out .= $btn->render();
 
-			$out .= "<p class='detail'>*We recommend making another backup on your own too (like with PhpMyAdmin).</p>";
+			$out .= "<p class='detail'>*For additional safety, we recommend creating an independent database backup, for instance with PhpMyAdmin</p>";
 
 		} else {
 
