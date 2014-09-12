@@ -1,7 +1,13 @@
-# ProcessWire Core Upgrade
+# ProcessWire Upgrade
 
-**This is a beta version, so please do not use in production 
-environments just yet**. 
+Provides core and module upgrade notifications and optionally
+installation from the admin. 
+
+Can be used to upgrade your ProcessWire core or any module that
+is available from http://modules.processwire.com.
+
+
+## Core Upgrades
 
 Checks if upgrades are available for your ProcessWire installation. 
 If available, it will download the update. If your file system is
@@ -24,9 +30,24 @@ If your ProcessWire version is new enough to have the
 WireDatabaseBackup class (PW 2.4.14+) then this module will
 also give you the option of backing up your database. 
 
+
+## Module Upgrades
+
+Uses web services from modules.processwire.com to compare your
+current installed versions of modules to the latest remote 
+versions available. Provides upgrade links when it finds newer 
+versions of modules you have installed. 
+
+
+## Please Note
+
+This is a new tool in beta so please test in non-production 
+environments before using in production environments.
+
+
 ## Requirements
 
-ProcessWire 2.3.4 or newer
-
+- ProcessWire 2.3.4 or newer (for core upgrade capability)
+- ProcessWIre 2.5.0 or newer (for auto-upgrade notifications)
 
 

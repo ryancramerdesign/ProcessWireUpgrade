@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Tool to Upgrade ProcessWire Core
+ * Tool to display available core and module upgrades for ProcessWire
  *
  * ProcessWire 2.x 
  * Copyright (C) 2014 by Ryan Cramer 
@@ -19,16 +19,17 @@ class ProcessWireUpgrade extends Process {
 	 */
 	public static function getModuleInfo() {
 		return array(
-			'title' => 'Core Upgrade', 
-			'summary' => 'Upgrade ProcessWire core to latest master or dev version automatically in the admin.', 
-			'version' => 1, 
+			'title' => 'Upgrades', 
+			'summary' => 'Tool that helps you identify and install core and module upgrades.', 
+			'version' => 2, 
 			'author' => 'Ryan Cramer', 
+			'installs' => 'ProcessWireUpgradeCheck', 
 			'icon' => 'coffee'
 			); 
 	}
 
 	const debug = false; 
-	const pageName = 'core-upgrade';
+	const pageName = 'upgrades';
 	const branchesURL = 'https://api.github.com/repos/ryancramerdesign/Processwire/branches';
 	const versionURL = 'https://raw.githubusercontent.com/ryancramerdesign/ProcessWire/{branch}/wire/core/ProcessWire.php'; 
 	const zipURL = 'https://github.com/ryancramerdesign/ProcessWire/archive/{branch}.zip';
@@ -68,6 +69,12 @@ class ProcessWireUpgrade extends Process {
 	protected $renames = array(); // scheduled renames to occur after page render
 
 	/**
+	 * Instance of ProcessWireUpgradeCheck
+	 *
+	 */
+	protected $checker = null;
+
+	/**
 	 * Construct
 	 *
 	 */
@@ -86,75 +93,23 @@ class ProcessWireUpgrade extends Process {
 		if($this->config->demo) throw new WireException("This module cannot be used in demo mode"); 
 		if(!$this->user->isSuperuser()) throw new WireException("This module requires superuser"); 
 		set_time_limit(3600); 
+		$this->checker = $this->modules->getInstall('ProcessWireUpgradeCheck'); 
+		if(!$this->checker) throw new WireException("Please go to Modules and click 'Check for new modules' - this will auto-update ProcessWireUpgrade."); 
 		parent::init();
 	}
 
 	/**
-	 * Get all available branches with info for each
-	 *
-	 */
-	protected function getBranches() {
-
-		if(!$this->input->get->refresh_branches) { 
-			$branches = $this->session->get('ProcessWireUpgrade_branches'); 
-			if($branches && count($branches)) return $branches; 
-		}
-
-		$branches = array();
-		$http = new WireHttp();
-		$http->setHeader('User-Agent', 'ProcessWireUpgrade'); 
-		$json = $http->get(self::branchesURL); 
-		if(!$json) throw new WireException("Error loading GitHub branches " . self::branchesURL); 
-
-		$data = json_decode($json, true); 
-		if(!$data) throw new WireException("Error JSON decoding GitHub branches $json " . self::branchesURL); 
-
-		$this->message("Retrieved " . count($data) . " branches from GitHub"); 
-
-		foreach($data as $key => $info) {
-			$name = $info['name'];
-			$branch = array(
-				'name' => $name, 
-				'title' => ucfirst($name), 
-				'zipURL' => str_replace('{branch}', $name, self::zipURL), 
-				'version' => '', 
-				'versionURL' => str_replace('{branch}', $name, self::versionURL), 
-				);
-
-			if($name == 'dev') $branch['title'] = 'Development';
-			if($name == 'master') $branch['title'] = 'Stable/Master'; 
-
-			$content = $http->get($branch['versionURL']); 
-			if(!preg_match_all('/const\s+version(Major|Minor|Revision)\s*=\s*(\d+)/', $content, $matches)) {
-				$branch['version'] = '?';
-				continue; 
-			}
-
-			$version = array();
-			foreach($matches[1] as $key => $var) {
-				$version[$var] = (int) $matches[2][$key];
-			}
-
-			$branch['version'] = "$version[Major].$version[Minor].$version[Revision]";
-			$branches[$name] = $branch;
-		}
-
-		$this->session->set('ProcessWireUpgrade_branches', $branches); 
-		return $branches;
-	}
-
-	/**
-	 * Get info for either a specific branch, or for the currently selected branch
+	 * Get info for either a specific core branch, or for the currently selected core branch
 	 *
 	 */
 	protected function getBranch($name = '') {
-		$branches = $this->getBranches(); 
+		$branches = $this->checker->getCoreBranches(); 
 		if(empty($name)) $name = $this->session->get('ProcessWireUpgrade_branch');
 		return isset($branches[$name]) ? $branches[$name] : array();
 	}
 
 	/**
-	 * Set the current branch
+	 * Set the current core branch
 	 *
 	 */
 	protected function setBranch($name) {
@@ -178,16 +133,10 @@ class ProcessWireUpgrade extends Process {
 			$this->error("Please note that your current PHP version (" . PHP_VERSION . ") is not adequate to upgrade to the latest ProcessWire."); 
                 }
 
-		$out = '';
+		if(!extension_loaded('pdo_mysql')) $this->error("Your PHP is not compiled with PDO support. PDO is required by ProcessWire 2.4+."); 
+		if(!class_exists('ZipArchive')) $this->error("Your PHP does not have ZipArchive support. This is required to install core or module upgrades with this tool.");  
 
-		if(!$this->config->debug) {
-			$this->error(
-				"While optional, we recommend that you enable debug mode during the upgrade " . 
-				"so that you will see detailed error messages, should they occur. " . 
-				"Do this by editing /site/config.php and setting the debug " . 
-				"option to true. Example: \$config->debug = true;"
-				); 
-		}
+		$out = '';
 
 		if(file_exists($this->cachePath) || file_exists($this->tempPath)) {
 			$out = "<h2>Upgrade files are already present. Please remove them before continuing.</h2>";
@@ -198,23 +147,51 @@ class ProcessWireUpgrade extends Process {
 			return $out; 
 		}
 
-		$out = "<h2>Please select a branch:</h2><p>";
-		foreach($this->getBranches() as $name => $info) {
-			$btn = $this->modules->get('InputfieldButton'); 
-			$btn->href = "./check?branch=$name";
-			$btn->icon = 'code-fork';
-			$btn->value = "$info[title] - $info[version]"; 
-			$out .= $btn->render();
+		$table = $this->modules->get('MarkupAdminDataTable'); 
+		$table->setEncodeEntities(false);
+		$table->headerRow(array(
+			$this->_('Module'), 
+			$this->_('Class'), 
+			$this->_('Installed'), 
+			$this->_('Latest'),
+			$this->_('Status')
+			));
+
+		$items = $this->checker->getVersions(); 
+		if(count($items)) { 
+			foreach($items as $name => $item) {
+				if(empty($item['remote'])) continue; // not in directory
+				$remote = $this->sanitizer->entities($item['remote']);
+
+				if($item['new'] > 0) { 
+					$upgradeLabel = $this->_('Upgrade available'); 
+					$remote = "<strong>$remote</strong>";
+				} else if($item['new'] < 0) { 
+					$upgradeLabel = $this->_('Older than current'); 
+				} else {
+					$upgradeLabel = $this->_('Up-to-date'); 
+				}
+				if(empty($item['branch'])) {
+					$upgradeURL = $this->wire('config')->urls->admin . "module/?update=$name";
+				} else {
+					$upgradeURL = "./check?branch=$item[branch]";
+				}
+				if($item['new'] > 0) $upgrade = "<a href='$upgradeURL'><i class='fa fa-lightbulb-o'></i> <strong>$upgradeLabel</strong></a>"; 
+					else $upgrade = "<span class='detail'>$upgradeLabel</span>";
+					// else if(!$item['remote']) $upgrade = "<span class='detail'>" . $this->_('Not in directory') . "</span>";
+				$table->row(array(
+					"<a href='$upgradeURL'>" . $this->sanitizer->entities($item['title']) . "</a>",	
+					$this->sanitizer->entities($name), 
+					$this->sanitizer->entities($item['local']), 
+					$remote,
+					$upgrade
+					));
+			}
+		} else {
 		}
 
-		$btn = $this->modules->get('InputfieldButton'); 
-		$btn->href = "./?refresh_branches=1";
-		$btn->icon = 'refresh';
-		$btn->value = "Refresh"; 
-		$btn->addClass('ui-priority-secondary'); 
-		$out .= $btn->render();
+		$out .= $table->render();
 
-		$out .= "</p>";
 		return $out; 
 	}
 
@@ -233,6 +210,16 @@ class ProcessWireUpgrade extends Process {
 	 *
 	 */
 	public function executeCheck() {
+
+		if(!$this->config->debug) {
+			$this->error(
+				"While optional, we recommend that you enable debug mode during the upgrade " . 
+				"so that you will see detailed error messages, should they occur. " . 
+				"Do this by editing /site/config.php and setting the debug " . 
+				"option to true. Example: \$config->debug = true;"
+				); 
+		}
+
 		$name = $this->input->get->branch; 
 		if(empty($name)) throw new WireException("No branch selected"); 
 		$branch = $this->getBranch($name);
@@ -743,7 +730,7 @@ class ProcessWireUpgrade extends Process {
 		// find the page we installed, locating it by the process field (which has the module ID)
 		// it would probably be sufficient just to locate by name, but this is just to be extra sure.
 		$moduleID = $this->modules->getModuleID($this); 
-		$page = $this->pages->get("template=admin, process=$moduleID, name=" . self::pageName); 
+		$page = $this->pages->get("template=admin, process=$moduleID, name=" . self::pageName . "|core-upgrade"); 
 
 		if($page->id) {
 			// if we found the page, let the user know and delete it
