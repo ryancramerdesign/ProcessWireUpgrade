@@ -23,7 +23,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 		return array(
 			'title' => 'Upgrades Checker', 
 			'summary' => 'Automatically checks for core and installed module upgrades at routine intervals.', 
-			'version' => 2, 
+			'version' => 3, 
 			'autoload' => "template=admin", 
 			'singular' => true, 
 			'author' => 'Ryan Cramer', 
@@ -54,7 +54,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 		$cache = $this->cache; 
 		$cacheName = $this->className() . "_loginHook";
 		$cacheData = $cache ? $cache->get($cacheName) : null;
-		if(!empty($cacheData)) $cache = json_decode($cacheData, true); 
+		if(!empty($cacheData) && is_string($cacheData)) $cache = json_decode($cacheData, true); 
 
 		$branches = empty($cacheData) ? $this->getCoreBranches() : $cacheData['branches']; 
 		$master = $branches['master'];
@@ -203,7 +203,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 			if(!is_array($data)) {
 				$error = $http->getError();
 				if(!$error) $error = $this->_('Error retrieving modules directory data'); 
-				$this->error($error); 
+				$this->error($error . " (" . $this->className() . ")"); 
 				return array();
 			}
 		}
