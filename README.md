@@ -27,7 +27,7 @@ reason, you can manually restore from the backups should you
 need to. 
 
 If your ProcessWire version is new enough to have the 
-WireDatabaseBackup class (PW 2.4.14+) then this module will
+WireDatabaseBackup class (PW 2.5.14+) then this module will
 also give you the option of backing up your database. 
 
 
@@ -48,6 +48,7 @@ environments before using in production environments.
 ## Requirements
 
 - ProcessWire 2.3.4 or newer (for core upgrade capability)
-- ProcessWIre 2.5.0 or newer (for auto-upgrade notifications)
+- ProcessWire 2.5.0 or newer (for module upgrade capability)
+- ProcessWire 2.5.20 or newer (for automatic upgrade checks)
 
 

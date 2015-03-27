@@ -23,7 +23,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 		return array(
 			'title' => 'Upgrades Checker', 
 			'summary' => 'Automatically checks for core and installed module upgrades at routine intervals.', 
-			'version' => 3, 
+			'version' => 4, 
 			'autoload' => "template=admin", 
 			'singular' => true, 
 			'author' => 'Ryan Cramer', 
@@ -35,12 +35,18 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	const versionURL = 'https://raw.githubusercontent.com/ryancramerdesign/ProcessWire/{branch}/wire/core/ProcessWire.php'; 
 	const zipURL = 'https://github.com/ryancramerdesign/ProcessWire/archive/{branch}.zip';
 
+	public function __construct() {
+		$this->set('useLoginHook', 1); 
+	}
+
 	/**
 	 * Initialize and perform access checks
 	 *
 	 */
 	public function init() {
-		$this->session->addHookAfter('login', $this, 'loginHook'); 
+		if($this->useLoginHook) {
+			$this->session->addHookAfter('login', $this, 'loginHook'); 
+		}
 	}
 
 	/**
@@ -337,7 +343,5 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 		if(count($newerBranches > 1)) ksort($newerBranches); 
 		return $newerBranches; 
 	}
-
-
 }
 
