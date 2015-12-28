@@ -34,6 +34,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	const branchesURL = 'https://api.github.com/repos/ryancramerdesign/Processwire/branches';
 	const versionURL = 'https://raw.githubusercontent.com/ryancramerdesign/ProcessWire/{branch}/wire/core/ProcessWire.php'; 
 	const zipURL = 'https://github.com/ryancramerdesign/ProcessWire/archive/{branch}.zip';
+	const timeout = 4.5;
 
 	public function __construct() {
 		$this->set('useLoginHook', 1); 
@@ -57,12 +58,14 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 
 		if(!$this->user->isSuperuser()) return; // only show messages to superuser
 
+		$moduleVersions = array();
 		$cache = $this->cache; 
 		$cacheName = $this->className() . "_loginHook";
 		$cacheData = $cache ? $cache->get($cacheName) : null;
 		if(!empty($cacheData) && is_string($cacheData)) $cache = json_decode($cacheData, true); 
 
-		$branches = empty($cacheData) ? $this->getCoreBranches() : $cacheData['branches']; 
+		$branches = empty($cacheData) ? $this->getCoreBranches(false) : $cacheData['branches']; 
+		if(empty($branches)) return;
 		$master = $branches['master'];
 		$branch = null;
 		$new = version_compare($master['version'], $this->config->version);
@@ -85,7 +88,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 			$this->message($this->_('Your ProcessWire core is up-to-date'));
 		}
 
-                if($this->config->moduleServiceKey) { 
+		if($this->config->moduleServiceKey) { 
 			$n = 0;
 			if(empty($cacheData) || empty($cacheData['moduleVersions'])) {
 				$moduleVersions = $this->getModuleVersions(true);
@@ -126,7 +129,8 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	 */
 	public function getVersions() {
 		$versions = array();
-		foreach($this->getCoreBranches() as $branch) {
+		$branches = $this->getCoreBranches(false);
+		foreach($branches as $branch) {
 			$name = "ProcessWire $branch[name]"; 
 			$new = version_compare($branch['version'], $this->config->version); 
 			$versions[$name] = array(
@@ -138,7 +142,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 				);
 		}
 
-                if($this->config->moduleServiceKey) { 
+		if($this->config->moduleServiceKey) { 
 			foreach($this->getModuleVersions(false) as $name => $info) {
 				$versions[$name] = $info; 
 			}
@@ -168,6 +172,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	 *		'requiresVersions' => array('ModuleName' => array('>', '1.2.3')), // module requirements
 	 *		)
 	 * 	) 
+	 * @throws WireException
 	 *
 	 */
 	public function getModuleVersions($onlyNew = false) {
@@ -204,6 +209,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 		if(empty($data)) { 
 			// if not cached
 			$http = new WireHttp();
+			$http->setTimeout(self::timeout);
 			$data = $http->getJSON($url); 
 			$this->getModuleVersionsData = $data; 
 		
@@ -248,6 +254,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	 *	- zipURL (string) URL to zip download file
 	 * 	- version (string) i.e. 2.5.0
 	 *	- versionURL (string) URL to we pull version from
+	 * @throws WireException
 	 *
 	 */
 	public function getCoreBranches($throw = true, $refresh = false) {
@@ -259,10 +266,13 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 
 		$branches = array();
 		$http = new WireHttp();
+		$http->setTimeout(self::timeout); 
 		$http->setHeader('User-Agent', 'ProcessWireUpgrade'); 
 		$json = $http->get(self::branchesURL); 
 		if(!$json) {
-			$error = "Error loading GitHub branches " . self::branchesURL; 
+			$error = $this->_('Error loading GitHub branches') . ' - ' . self::branchesURL; 
+			$error .= ' - ' . $this->_('HTTP error(s):') . ' ' . $http->getError(); 
+			$error .= ' - ' . $this->_('Check that HTTP requests are not blocked by your server.'); 
 			if($throw) throw new WireException($error); 
 			$this->error($error); 
 			return array();
@@ -296,8 +306,8 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 			}
 
 			$version = array();
-			foreach($matches[1] as $key => $var) {
-				$version[$var] = (int) $matches[2][$key];
+			foreach($matches[1] as $k => $var) {
+				$version[$var] = (int) $matches[2][$k];
 			}
 
 			$branch['version'] = "$version[Major].$version[Minor].$version[Revision]";
@@ -317,10 +327,10 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	 * @return array of versions newer than current
 	 * @todo I think we can drop this method
 	 *
-	 */
 	public function getNewerCoreVersions($version, $branchName = '') {
 
 		$branches = $this->getCoreBranches(false); 
+		if(empty($branches)) return array();
 		$newerBranches = array();	
 		$olderBranches = array();
 
@@ -344,5 +354,6 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 		if(count($newerBranches > 1)) ksort($newerBranches); 
 		return $newerBranches; 
 	}
+	 */
 }
 

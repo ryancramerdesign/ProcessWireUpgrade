@@ -21,7 +21,7 @@ class ProcessWireUpgrade extends Process {
 		return array(
 			'title' => 'Upgrades', 
 			'summary' => 'Tool that helps you identify and install core and module upgrades.', 
-			'version' => 4, 
+			'version' => 6, 
 			'author' => 'Ryan Cramer', 
 			'installs' => 'ProcessWireUpgradeCheck', 
 			'icon' => 'coffee'
@@ -37,11 +37,15 @@ class ProcessWireUpgrade extends Process {
 	protected $indexHashes = array(
 		'2.4.0' => 'ae121ccc9c14a2cd5fa57e8786bdbb3f', 
 		'2.5.0' => '9b20ce2898be505608d54a1e0dd81215', 
+		'2.7.0' => '756b8a5685ce2b6b6e92062dcf040973',	
+		'3.0.0' => '3a29d29b4ff7b2273b0739a82305ff71',
 		);
 
 	protected $htaccessHashes = array(
 		'2.4.0' => '5114479740cb1e79a8004f3eddeecb54', 
 		'2.5.0' => 'f8229ef5e26221226844d461e1a4d8d2', 
+		'2.7.0' => 'd659abbf6c035b462b735743c007b17a',
+		'3.0.0' => 'd659abbf6c035b462b735743c007b17a', 
 		);
 
 	/**
@@ -70,6 +74,8 @@ class ProcessWireUpgrade extends Process {
 
 	/**
 	 * Instance of ProcessWireUpgradeCheck
+	 * 
+	 * @var ProcessWireUpgradeCheck
 	 *
 	 */
 	protected $checker = null;
@@ -100,6 +106,9 @@ class ProcessWireUpgrade extends Process {
 
 	/**
 	 * Get info for either a specific core branch, or for the currently selected core branch
+	 * 
+	 * @param string $name
+	 * @return array
 	 *
 	 */
 	protected function getBranch($name = '') {
@@ -151,6 +160,7 @@ class ProcessWireUpgrade extends Process {
 			$this->modules->resetCache();
 		}
 
+		/** @var ProcessWire\MarkupAdminDataTable $table */
 		$table = $this->modules->get('MarkupAdminDataTable'); 
 		$table->setEncodeEntities(false);
 		$table->headerRow(array(
@@ -166,14 +176,13 @@ class ProcessWireUpgrade extends Process {
 			foreach($items as $name => $item) {
 				if(empty($item['remote'])) continue; // not in directory
 				$remote = $this->sanitizer->entities($item['remote']);
+				$upgradeLabel = $this->_('Up-to-date'); 
 
 				if($item['new'] > 0) { 
 					$upgradeLabel = $this->_('Upgrade available'); 
 					$remote = "<strong>$remote</strong>";
 				} else if($item['new'] < 0) { 
-					$upgradeLabel = $this->_('Older than current'); 
-				} else {
-					$upgradeLabel = $this->_('Up-to-date'); 
+					$upgradeLabel .= '+';
 				}
 				if(empty($item['branch'])) {
 					$upgradeURL = $this->wire('config')->urls->admin . "module/?update=$name";
@@ -224,7 +233,7 @@ class ProcessWireUpgrade extends Process {
 				); 
 		}
 
-		$name = $this->input->get->branch; 
+		$name = $this->input->get('branch'); 
 		if(empty($name)) throw new WireException("No branch selected"); 
 		$branch = $this->getBranch($name);
 		if(!count($branch)) throw new WireException("Unknown branch"); 
@@ -341,6 +350,7 @@ class ProcessWireUpgrade extends Process {
 				"We recommend making a backup of database <u>{$this->config->dbName}</u> " . 
 				"using a tool like PhpMyAdmin. Click the button below once you have saved a backup.</p>";
 
+			/** @var ProcessWire\InputfieldButton $btn */
 			$btn = $this->modules->get('InputfieldButton'); 
 			$btn->href = "./prepare";
 			$btn->icon = 'angle-right';
@@ -640,6 +650,11 @@ class ProcessWireUpgrade extends Process {
 
 	/**
 	 * Perform a rename now
+	 * 
+	 * @param string $old
+	 * @param string $new
+	 * @return bool
+	 * @throws WireException
 	 *
 	 */
 	protected function renameNow($old, $new) {
@@ -652,12 +667,12 @@ class ProcessWireUpgrade extends Process {
 
 		if(!file_exists($old)) {
 			$this->error("$_old does not exist"); 
-			continue; 
+			return $result; 
 		}
 
 		if(file_exists($new)) {
 			$this->message("$_new already exists (we left it untouched)"); 
-			return true; 
+			return $result; 
 		}
 	
 		$result = rename($old, $new); 	
