@@ -4,12 +4,15 @@
  * ProcessWire Upgrade Check
  *
  * Automatically checks for core and installed module upgrades at routine intervals.
+ * Also provides the API functions for repository info used by ProcessWireUpgrade module. 
  *
- * ProcessWire 2.x 
- * Copyright (C) 2014 by Ryan Cramer 
- * Licensed under GNU/GPL v2, see LICENSE.TXT
+ * ProcessWire 
+ * Copyright (C) 2016 by Ryan Cramer 
+ * Licensed under MPL 2.0
  * 
- * http://processwire.com
+ * https://processwire.com
+ * 
+ * @property bool $useLoginHook
  *
  */
 
@@ -23,7 +26,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 		return array(
 			'title' => 'Upgrades Checker', 
 			'summary' => 'Automatically checks for core and installed module upgrades at routine intervals.', 
-			'version' => 5, 
+			'version' => 7, 
 			'autoload' => "template=admin", 
 			'singular' => true, 
 			'author' => 'Ryan Cramer', 
@@ -31,13 +34,46 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 			); 
 	}
 
-	const branchesURL = 'https://api.github.com/repos/ryancramerdesign/Processwire/branches';
-	const versionURL = 'https://raw.githubusercontent.com/ryancramerdesign/ProcessWire/{branch}/wire/core/ProcessWire.php'; 
-	const zipURL = 'https://github.com/ryancramerdesign/ProcessWire/archive/{branch}.zip';
+	const tagsURL = 'https://api.github.com/repos/processwire/processwire/tags';
+	const branchesURL = 'https://api.github.com/repos/processwire/processwire/branches';
+	const versionURL = 'https://raw.githubusercontent.com/processwire/processwire/{branch}/wire/core/ProcessWire.php'; 
+	const zipURL = 'https://github.com/processwire/processwire/archive/{branch}.zip';
 	const timeout = 4.5;
 
+	/**
+	 * Repository information indexed by branch 
+	 * 
+	 * @var array
+	 * 
+	 */
+	protected $repos = array();
+
+	/**
+	 * Construct
+	 * 
+	 */
 	public function __construct() {
-		$this->set('useLoginHook', 1); 
+		$this->set('useLoginHook', 1);
+		$this->repos = array(
+			'main' => array(
+				'branchesURL' => self::branchesURL,
+				'zipURL' => self::zipURL,
+				'versionURL' => self::versionURL,
+				'tagsURL' => self::tagsURL,
+			),
+			'legacy' => array(
+				'branchesURL' => $this->legacyURL(self::branchesURL),
+				'zipURL' => $this->legacyURL(self::zipURL),
+				'versionURL' => $this->legacyURL(self::versionURL),
+				'tagsURL' => $this->legacyURL(self::tagsURL),
+			),
+			'prev' => array(
+				'branchesURL' => 'https://api.github.com/repos/ryancramerdesign/ProcessWire/branches',
+				'zipURL' => 'https://github.com/ryancramerdesign/ProcessWire/archive/{branch}.zip',
+				'versionURL' => 'https://raw.githubusercontent.com/ryancramerdesign/ProcessWire/{branch}/wire/core/ProcessWire.php',
+				'tagsURL' => self::tagsURL,
+			),
+		);
 	}
 
 	/**
@@ -52,10 +88,13 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 
 	/**
 	 * Check for upgrades at login (superuser only)
+	 * 
+	 * @param null|HookEvent $e
 	 *
 	 */
 	public function loginHook($e = null) {
-
+		
+		if($e) {} // ignored HookEvent
 		if(!$this->user->isSuperuser()) return; // only show messages to superuser
 
 		$moduleVersions = array();
@@ -73,7 +112,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 		if($new > 0) { 
 			// master is newer than current
 			$branch = $master;	
-		} else if($new < 0) {
+		} else if($new < 0 && isset($branches['dev'])) {
 			// we will assume dev branch
 			$dev = $branches['dev'];
 			$new = version_compare($dev['version'], $this->config->version);
@@ -129,9 +168,9 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	 */
 	public function getVersions() {
 		$versions = array();
-		$branches = $this->getCoreBranches(false);
-		foreach($branches as $branch) {
-			$name = "ProcessWire $branch[name]"; 
+		$branches = $this->getCoreBranches(false);//, true); // true is TMP
+		foreach($branches as $branchName => $branch) {
+			$name = "ProcessWire $branchName"; 
 			$new = version_compare($branch['version'], $this->config->version); 
 			$versions[$name] = array(
 				'title' => "ProcessWire Core ($branch[title])", 
@@ -226,7 +265,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 			$versions[$name]['remote'] = $item['module_version'];	
 			$new = version_compare($versions[$name]['remote'], $versions[$name]['local']);
 			$versions[$name]['new'] = $new; 
-                	if($new <= 0) {
+			if($new <= 0) {
 				// local is up-to-date or newer than remote
 				if($onlyNew) unset($versions[$name]); 
 			} else {
@@ -241,8 +280,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	
 		return $versions; 	
 	}
-
-
+	
 	/**
 	 * Get all available branches with info for each
 	 *
@@ -263,55 +301,69 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 			$branches = $this->session->get('ProcessWireUpgrade_branches'); 
 			if($branches && count($branches)) return $branches; 
 		}
-
+		
 		$branches = array();
-		$http = new WireHttp();
-		$http->setTimeout(self::timeout); 
-		$http->setHeader('User-Agent', 'ProcessWireUpgrade'); 
-		$json = $http->get(self::branchesURL); 
-		if(!$json) {
-			$error = $this->_('Error loading GitHub branches') . ' - ' . self::branchesURL; 
-			$error .= ' - ' . $this->_('HTTP error(s):') . ' ' . $http->getError(); 
-			$error .= ' - ' . $this->_('Check that HTTP requests are not blocked by your server.'); 
-			if($throw) throw new WireException($error); 
-			$this->error($error); 
-			return array();
-		}
+		
+		foreach($this->repos as $repoName => $repo) {
+			
+			$http = new WireHttp();
+			$http->setTimeout(self::timeout);
+			$http->setHeader('User-Agent', 'ProcessWireUpgrade');
+			$json = $http->get($repo['branchesURL']);
+			
+			$loadError = $this->_('Error loading GitHub branches') . ' - ' . $repo['branchesURL'];
 
-		$data = json_decode($json, true); 
-		if(!$data) {
-			$error = "Error JSON decoding GitHub branches " . self::branchesURL; 
-			if($throw) throw new WireException($error); 
-			$this->error($error); 
-			return array();
-		}
+			if(!$json) {
+				$error = $loadError;
+				$error .= ' - ' . $this->_('HTTP error(s):') . ' ' . $http->getError();
+				$error .= ' - ' . $this->_('Check that HTTP requests are not blocked by your server.');
+				if($throw) throw new WireException($error);
+				$this->error($error);
+				return array();
+			}
 
-		foreach($data as $key => $info) {
-			$name = $info['name'];
-			$branch = array(
-				'name' => $name, 
-				'title' => ucfirst($name), 
-				'zipURL' => str_replace('{branch}', $name, self::zipURL), 
-				'version' => '', 
-				'versionURL' => str_replace('{branch}', $name, self::versionURL), 
+			$data = json_decode($json, true);
+			
+			if(!$data) {
+				$error = $loadError;
+				if($throw) throw new WireException($error);
+				$this->error($error);
+				return array();
+			}
+			
+			foreach($data as $key => $info) {
+				
+				$name = $info['name'];
+				
+				$branch = array(
+					'name' => $name,
+					'title' => ucfirst($name),
+					'zipURL' => str_replace('{branch}', $name, $repo['zipURL']),
+					'version' => '',
+					'versionURL' => str_replace('{branch}', $name, $repo['versionURL']),
 				);
 
-			if($name == 'dev') $branch['title'] = 'Development';
-			if($name == 'master') $branch['title'] = 'Stable/Master'; 
+				$content = $http->get($branch['versionURL']);
+				if(!preg_match_all('/const\s+version(Major|Minor|Revision)\s*=\s*(\d+)/', $content, $matches)) {
+					$branch['version'] = '?';
+					continue;
+				}
 
-			$content = $http->get($branch['versionURL']); 
-			if(!preg_match_all('/const\s+version(Major|Minor|Revision)\s*=\s*(\d+)/', $content, $matches)) {
-				$branch['version'] = '?';
-				continue; 
+				$version = array();
+				foreach($matches[1] as $k => $var) {
+					$version[$var] = (int) $matches[2][$k];
+				}
+
+				$branch['version'] = "$version[Major].$version[Minor].$version[Revision]";
+				
+				if($repoName != 'main') {
+					$name = "$repoName-$name";
+					$branch['name'] = $name;
+					$branch['title'] = ucfirst($repoName) . "/$branch[title]";
+				}
+				
+				$branches[$name] = $branch;
 			}
-
-			$version = array();
-			foreach($matches[1] as $k => $var) {
-				$version[$var] = (int) $matches[2][$k];
-			}
-
-			$branch['version'] = "$version[Major].$version[Minor].$version[Revision]";
-			$branches[$name] = $branch;
 		}
 
 		$this->session->set('ProcessWireUpgrade_branches', $branches); 
@@ -320,40 +372,15 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	}
 
 	/**
-	 * Get versions that are newer than given version
-	 *
-	 * @param string $version
-	 * @param string $branchName optionlly limit to given branch name
-	 * @return array of versions newer than current
-	 * @todo I think we can drop this method
-	 *
-	public function getNewerCoreVersions($version, $branchName = '') {
-
-		$branches = $this->getCoreBranches(false); 
-		if(empty($branches)) return array();
-		$newerBranches = array();	
-		$olderBranches = array();
-
-		foreach($branches as $branch) {
-			if($branchName && $branch['name'] != $branchName) continue; 
-                	if(version_compare($version, $branch['version']) >= 0) {
-				// current is newer than this branch
-			} else {
-				// branch is newer than this
-				$parts = explode('.', $branch['version']); 
-				foreach($parts as $key => $value) {
-					$parts[$key] = str_pad($value, 3, '0', STR_PAD_LEFT); 
-				}
-				$longVersion = (int) implode('', $parts); 
-				while(isset($newerBranches[$longVersion])) $longVersion++;
-				$newerBranches[$longVersion] = $branch; 
-			}
-		}
-
-		if(!count($newerBranches)) return array();
-		if(count($newerBranches > 1)) ksort($newerBranches); 
-		return $newerBranches; 
-	}
+	 * Convert given URL from master to legacy repo
+	 * 
+	 * @param string $url
+	 * @return string
+	 * 
 	 */
+	protected function legacyURL($url) {
+		return str_replace('processwire/processwire/', 'processwire/processwire-legacy/', $url);
+	}
+
 }
 

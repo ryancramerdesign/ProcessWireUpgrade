@@ -17,12 +17,6 @@ manually through your hosting account (FTP, SSH, etc.), which
 is already very simple to do. This ensures that any installed files 
 are owned and writable by your user account rather than Apache.
 
-If upgrading from 2.x to 3.x (devns), we recommend updating manually per
-the instructions included with PW 3.x. While you can use this tool,
-we think it's better to do manual upgrades when it comes to major
-versions currently in development. 
-
-
 ## Core Upgrades
 
 This tool checks if upgrades are available for your ProcessWire installation. 
