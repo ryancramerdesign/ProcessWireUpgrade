@@ -24,6 +24,7 @@ class ProcessWireUpgrade extends Process {
 			'version' => 7, 
 			'author' => 'Ryan Cramer', 
 			'installs' => 'ProcessWireUpgradeCheck', 
+			'requires' => 'ProcessWire>=2.5.20',
 			'icon' => 'coffee'
 			); 
 	}

@@ -28,7 +28,7 @@ what files to move.
 
 Options to upgrade from the master or dev branch are available. 
 
-This utility can be also used to upgrade any PW 2.3.4+ or newer 
+This utility can be also used to upgrade any PW 2.5.20+ or newer 
 site to the latest version.
 
 This utility makes versioned backup copies of any files it 
@@ -59,8 +59,6 @@ depending on your environment.
 
 ## Requirements
 
-- ProcessWire 2.3.4 or newer (for core upgrade capability)
-- ProcessWire 2.5.0 or newer (for module upgrade capability)
-- ProcessWire 2.5.20 or newer (for automatic upgrade checks)
+- ProcessWire 2.5.20 or newer 
 
 
