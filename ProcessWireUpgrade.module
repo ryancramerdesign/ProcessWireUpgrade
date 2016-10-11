@@ -103,7 +103,9 @@ class ProcessWireUpgrade extends Process {
 	public function init() {
 		if($this->config->demo) throw new WireException("This module cannot be used in demo mode"); 
 		if(!$this->user->isSuperuser()) throw new WireException("This module requires superuser"); 
-		set_time_limit(3600); 
+		$ua = ini_get("user_agent");
+		if(empty($ua)) ini_set("user_agent", "PHP " . PHP_VERSION);
+		set_time_limit(3600);
 		$this->checker = $this->modules->getInstall('ProcessWireUpgradeCheck'); 
 		if(!$this->checker) throw new WireException("Please go to Modules and click 'Check for new modules' - this will auto-update ProcessWireUpgrade."); 
 		parent::init();
