@@ -4,7 +4,9 @@ Provides core and module upgrade notifications and optionally
 installation from the admin. 
 
 Can be used to upgrade your ProcessWire core or any module that
-is available from http://modules.processwire.com.
+is available from <https://processwire.com/modules/>.
+
+Requires ProcessWire 3.x
 
 ## Please note before using this tool
 
@@ -17,6 +19,9 @@ manually through your hosting account (FTP, SSH, etc.), which
 is already very simple to do. This ensures that any installed files 
 are owned and writable by your user account rather than Apache.
 
+Even if you don't use this tool to install the upgrades, this tool
+is still useful in identifying when upgrades are available. 
+
 ## Core Upgrades
 
 This tool checks if upgrades are available for your ProcessWire installation. 
@@ -28,17 +33,10 @@ what files to move.
 
 Options to upgrade from the master or dev branch are available. 
 
-This utility can be also used to upgrade any PW 2.5.20+ or newer 
-site to the latest version.
-
-This utility makes versioned backup copies of any files it 
+This tool makes versioned backup copies of any files it 
 overwrites during the upgrade. Should an upgrade fail for some
 reason, you can manually restore from the backups should you
 need to. 
-
-If your ProcessWire version is new enough to have the 
-WireDatabaseBackup class (PW 2.5.14+) then this module will
-also give you the option of backing up your database. 
 
 After installing a core upgrade, you may want to manually update
 the permissions of installed files to be non-writable to Apache,
@@ -55,10 +53,5 @@ versions of modules you have installed.
 After installing module upgrades, you may want to manually update
 the permissions of installed files to be non-writable to Apache,
 depending on your environment. 
-
-
-## Requirements
-
-- ProcessWire 2.5.20 or newer 
 
 

@@ -1,4 +1,5 @@
-.content ul.bullets li {
+body.AdminThemeDefault .content ul.bullets li,
+body.AdminThemeReno .content ul.bullets li {
 	display: list-item;
 	list-style: disc;
 	margin-left: 2em;
