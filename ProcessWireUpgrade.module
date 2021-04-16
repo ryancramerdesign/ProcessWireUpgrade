@@ -21,7 +21,7 @@ class ProcessWireUpgrade extends Process {
 		return array(
 			'title' => 'Upgrades', 
 			'summary' => 'Tool that helps you identify and install core and module upgrades.', 
-			'version' => 8, 
+			'version' => 9, 
 			'author' => 'Ryan Cramer', 
 			'installs' => 'ProcessWireUpgradeCheck', 
 			'requires' => 'ProcessWire>=3.0.0',
@@ -156,7 +156,10 @@ class ProcessWireUpgrade extends Process {
 		}
 
 		if(!class_exists('\ZipArchive')) {
-			$this->error("Your PHP does not have ZipArchive support. This is required to install core or module upgrades with this tool.");
+			$this->warning(
+				"Your PHP does not have ZipArchive support. This is required to install core or module upgrades with this tool. " . 
+				"You can still use this tool to identify new versions and install them manually."
+			);
 		}
 		
 		$upgradePaths = array($this->cachePath, $this->tempPath);
@@ -166,15 +169,27 @@ class ProcessWireUpgrade extends Process {
 		}
 
 		if(count($upgradePaths)) {
-			$out = $this->h('Upgrade files are already present. Please remove them before continuing.') . $this->ul($upgradePaths);
-			$btn = $this->wire()->modules->get('InputfieldButton'); /** @var InputfieldButton $btn */
+			$btn = $this->modules->get('InputfieldButton'); /** @var InputfieldButton $btn */
 			$btn->href = "./remove";
 			$btn->value = $this->_('Remove');
 			$btn->icon = 'trash-o';
-			$out .= $btn->render();
-			return $out;
+			return
+				$this->h('Upgrade files are already present. Please remove them before continuing.') . $this->ul($upgradePaths) . 
+				$this->p($btn->render());
 		}
 		
+		$lastRefresh = $this->session->getFor($this, 'lastRefresh');
+		
+		if(!$lastRefresh && method_exists($this->modules, 'resetCache')) {
+			$btn = $this->refreshButton();
+			$btn->value = $this->_('Continue');
+			$btn->icon = 'angle-right';
+			return
+				$this->h('We need to load the latest core and module versions from the ProcessWire modules directory.') . 
+				$this->p('This may take a few seconds to complete. Please click the button below to continue.') . 
+				$this->p($btn->render());
+		}
+
 		return '';
 	}
 
@@ -187,19 +202,9 @@ class ProcessWireUpgrade extends Process {
 		$sanitizer = $this->sanitizer;
 		$config = $this->config;
 		$modules = $this->modules;
-		$session = $this->session;
-		$input = $this->input;
-		$out = '';
-
-		$lastRefresh = $session->getFor($this, 'lastRefresh');
-		$refresh = $input->get('refresh') !== null || !$lastRefresh;
-		if($refresh) $session->setFor($this, 'lastRefresh', time());
+		
 		$preflight = $this->preflight();
 		if($preflight) return $preflight;
-
-		if($refresh && method_exists($modules, 'resetCache')) {
-			$modules->resetCache();
-		}
 
 		/** @var MarkupAdminDataTable $table */
 		$table = $modules->get('MarkupAdminDataTable'); 
@@ -213,22 +218,20 @@ class ProcessWireUpgrade extends Process {
 			$this->_('Links'),
 		));
 
-		$items = $this->checker->getVersions($refresh); 
-		
-		if($refresh) {
-			$this->message($this->_('Refreshed module versions data'));
-			$session->redirect('./');
-		}
+		$items = $this->checker->getVersions();
+		$numPro = 0;
 		
 		if(count($items)) { 
 			foreach($items as $name => $item) {
 				if(empty($item['remote'])) {
 					// not in directory
 				}
+				
 				$remote = $sanitizer->entities($item['remote']);
+				$installer = empty($item['installer']) ? '' : $sanitizer->entities($item['installer']);
 				$upgradeLabel = $this->_('Up-to-date'); 
 				$links = [];
-
+				
 				if($item['new'] > 0) { 
 					$upgradeLabel = $this->_('Upgrade available'); 
 					$remote = $this->b($remote); 
@@ -240,12 +243,13 @@ class ProcessWireUpgrade extends Process {
 					$upgradeLabel = "";
 				}
 				if(empty($item['branch'])) {
-					$upgradeURL = $config->urls->admin . "module/?update=$name";
+					$upgradeURL = $config->urls->admin . "module/?update=" . ($installer ? $installer : $name);
 				} else {
 					$upgradeURL = "./check?branch=$item[branch]";
 				}
 				if($item['new'] > 0) {
-					$upgrade = $this->a($upgradeURL, $this->icon('lightbulb-o') . ' ' . $this->b($upgradeLabel)); 
+					$upgradeLabel = $this->icon('lightbulb-o') . $upgradeLabel;
+					$upgrade = $this->a($upgradeURL, $upgradeLabel);
 				} else {
 					$upgrade = $this->span($upgradeLabel, 'detail');
 				}
@@ -264,33 +268,62 @@ class ProcessWireUpgrade extends Process {
 				if(!empty($urls['dir'])) {
 					$links[] = $this->iconLink('share-alt', $urls['dir'], 'Directory'); 
 				}
-				// else if(!$item['remote']) $upgrade = "<span class='detail'>" . $this->_('Not in directory') . "</span>";
-				$icon = empty($item['icon']) ? wireIconMarkup('plug', 'fw') : wireIconMarkup($item['icon'], 'fw');
-				$title = $sanitizer->entities($item['title']); 
+				
 				if(empty($remote) && empty($links)) continue;
+				
+				// else if(!$item['remote']) $upgrade = "<span class='detail'>" . $this->_('Not in directory') . "</span>";
+				$icon = empty($item['icon']) ? wireIconMarkup('plug', 'fw') : wireIconMarkup($this->sanitizer->entities($item['icon']), 'fw');
+				$title = $icon . ' ' . $sanitizer->entities($item['title']);
+				$proLabel = ' ' . $this->span('PRO', 'pro');
+				
+				if($installer && empty($remote)) {
+					$title = $this->tooltip("Upgraded with $installer", $title);
+					if(!empty($item['pro'])) $title .= $proLabel;
+					
+				} else if(!empty($item['pro'])) {
+					if($item['new'] > 0) {
+						if(!empty($urls['support'])) $upgradeURL = $urls['support'];
+						$protip = 'PRO module upgrade available in ProcessWire VIP support board (login required)';
+						$upgrade = $this->tooltip($protip, $this->aa($upgradeURL, $upgradeLabel));
+						$title = $this->tooltip($protip, $this->aa($upgradeURL, $title) . $proLabel);
+					} else {
+						$title = $this->a($upgradeURL, $title) . $proLabel;
+					}
+					$numPro++;
+					
+				} else {
+					$title = $this->a($upgradeURL, $title); 
+				}
+				
 				$table->row(array(
-					$this->a($upgradeURL, "$icon $title"),
+					$title,
 					$sanitizer->entities($name), 
 					$sanitizer->entities($item['local']), 
 					$remote,
 					$upgrade,
-					implode(' ', $links)
+					$this->span(implode(' ', $links), 'links')
 				));
 			}
 		}
 
-		$out .= $table->render();
-		$out .= $this->p(sprintf($this->_('Last refresh: %s'), wireRelativeTimeStr($lastRefresh)), 'description');
+		$lastRefresh = $this->session->getFor($this, 'lastRefresh');
+		
+		return
+			$table->render() . 
+			$this->p(sprintf($this->_('Last refresh: %s'), wireRelativeTimeStr($lastRefresh)), 'description') . 
+			$this->refreshButton(true)->render();
+	}
 
-
-		/** @var InputfieldButton $btn */
-		$btn = $modules->get('InputfieldButton');
-		$btn->href = './?refresh=1';
-		$btn->value = $this->_('Refresh');
-		$btn->icon = 'refresh';
-		$out .= $btn->render();
-
-		return $out; 
+	/**
+	 * Refresh module versions data
+	 * 
+	 */
+	public function executeRefresh() {
+		$this->session->setFor($this, 'lastRefresh', time());
+		$this->modules->resetCache();
+		$this->checker->getVersions(true);
+		$this->message($this->_('Refreshed module versions data'));
+		$this->session->redirect('./');
 	}
 
 	/**
@@ -837,6 +870,21 @@ class ProcessWireUpgrade extends Process {
 	}
 
 	/**
+	 * @param bool $showInHeader
+	 * @return InputfieldButton
+	 * 
+	 */
+	protected function refreshButton($showInHeader = false) {
+		/** @var InputfieldButton $btn */
+		$btn = $this->modules->get('InputfieldButton');
+		$btn->href = './refresh';
+		$btn->value = $this->_('Refresh');
+		$btn->icon = 'refresh';
+		if($showInHeader && method_exists($btn, 'showInHeader')) $btn->showInHeader(true);
+		return $btn;
+	}
+
+	/**
 	 * Process rename operations
 	 *
 	 */
@@ -866,14 +914,15 @@ class ProcessWireUpgrade extends Process {
 	
 	public function h($str, $h = 2) { return "<h$h>$str</h$h>"; }
 	public function p($str, $class = '') { return $class ? "<p class='$class'>$str</p>" : "<p>$str</p>"; }
-	public function a($href, $label, $class = '') { return ($class ? "<a class='$class' " : "<a ") . "href='$href'>$label</a>"; }
-	public function aa($href, $label, $class = '') { return str_replace('<a', '<a target="_blank"', $this->a($href, $label, $class)); }
+	public function a($href, $label, $class = '') { return ($class ? "<a class='$class' " : "<a ") . "href='" . $this->sanitizer->entities($href) . "'>$label</a>"; }
+	public function aa($href, $label, $class = '') { return str_replace('<a', "<a target='_blank'", $this->a($href, $label, $class)); }
 	public function span($str, $class = '') { return $class ? "<span class='$class'>$str</span>" : "<span>$str</span>"; }
 	public function b($str, $class = '') { return $class ? "<strong class='$class'>$str</strong>" : "<strong>$str</strong>"; }
 	public function ul(array $items) { return "<ul class='bullets'><li>" . implode('</li><li>', $items) . '</li></ul>'; }
 	public function form($action, $content) { return "<form action='$action' method='post'>$content</form>"; }
 	public function icon($name, $fw = true) { return wireIconMarkup($name, ($fw ? 'fw' : '')); }
-	public function iconLink($icon, $href, $tooltip) { return str_replace('<a', "<a title='$tooltip", $this->aa($href, $this->icon($icon), 'pw-tooltip')); }
+	public function iconLink($icon, $href, $tooltip) { return str_replace('<a', "<a title='$tooltip'", $this->aa($href, $this->icon($icon), 'pw-tooltip')); }
+	public function tooltip($tooltip, $markup) { return "<span class='pw-tooltip' title='$tooltip'>$markup</span>"; }
 	
 	public function checkbox($name, $label, $note = '', $checked = false) {
 		$adminTheme = $this->wire()->adminTheme;

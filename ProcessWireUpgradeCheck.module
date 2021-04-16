@@ -26,7 +26,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 		return array(
 			'title' => 'Upgrades Checker', 
 			'summary' => 'Automatically checks for core and installed module upgrades at routine intervals.', 
-			'version' => 8, 
+			'version' => 9, 
 			'autoload' => "template=admin", 
 			'singular' => true, 
 			'author' => 'Ryan Cramer', 
@@ -244,11 +244,15 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 				'local' => $modules->formatVersion($info['version']), 
 				'remote' => false, 
 				'new' => 0,
-				'requiresVersions' => $info['requiresVersions']
+				'requiresVersions' => $info['requiresVersions'],
+				'installs' => $info['installs'], 
 			);
 		}
 
 		if(!count($names)) return array();
+		
+		ksort($versions);
+		
 		$url .= implode(',', $names);
 
 		$data = $refresh ? null : $this->session->getFor($this, 'moduleVersionsData');
@@ -268,6 +272,9 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 				return array();
 			}
 		}
+		
+		$newVersions = array();
+		$installedBy = array(); // moduleName => installedByModuleName
 
 		foreach($data['items'] as $item) {
 			$name = $item['class_name'];
@@ -275,21 +282,46 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 			$new = version_compare($versions[$name]['remote'], $versions[$name]['local']);
 			$versions[$name]['new'] = $new; 
 			$versions[$name]['urls'] = $item['urls'];
+			$versions[$name]['installer'] = '';
+			$versions[$name]['pro'] = !empty($item['pro']); 
+		
+			if(!empty($versions[$name]['installs'])) {
+				foreach($versions[$name]['installs'] as $installsName) {
+					$installedBy[$installsName] = $name;
+				}
+			}
+			
 			if($new <= 0) {
 				// local is up-to-date or newer than remote
-				if($onlyNew) unset($versions[$name]); 
-			} else {
-				// remote is newer than local
-				$versions[$name]['requiresVersions'] = $item['requires'];
+				if($onlyNew) unset($versions[$name]);
+				continue;
 			}
+			
+			// remote is newer than local
+			$versions[$name]['requiresVersions'] = $item['requires'];
+			
+			if($new > 0 && !$onlyNew) {
+				$newVersions[$name] = $versions[$name];
+				unset($versions[$name]);
+			}
+		}
+		
+		if($onlyNew) {
+			foreach($versions as $name => $item) {
+				if($item['remote'] === false) unset($versions[$name]);
+			}
+		} else if(count($newVersions)) {
+			$versions = $newVersions + $versions;
 		}
 
-		if($onlyNew) {
-			foreach($versions as $name => $data) {
-				if($data['remote'] === false) unset($versions[$name]);
-			}
+		foreach($versions as $name => $item) {
+			if(!empty($versions[$name]['remote'])) continue;
+			if(!isset($installedBy[$name])) continue;
+			$versions[$name]['installer'] = $installedBy[$name];
+			$installer = $versions[$installedBy[$name]]; 
+			if(!empty($installer['pro'])) $versions[$name]['pro'] = true;
 		}
-	
+		
 		return $versions; 	
 	}
 	

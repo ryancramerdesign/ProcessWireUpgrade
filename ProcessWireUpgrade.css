@@ -7,3 +7,10 @@ body.AdminThemeReno .content ul.bullets li {
 	margin-top: 0;
 	margin-bottom: 0;
 }
+span.pro {
+	font-size: 12px; 
+	color: #999;
+}
+span.links {
+	white-space: nowrap;
+}
