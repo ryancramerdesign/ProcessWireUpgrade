@@ -278,6 +278,7 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 
 		foreach($data['items'] as $item) {
 			$name = $item['class_name'];
+			if(empty($versions[$name]) || empty($versions[$name]['local'])) continue;
 			$versions[$name]['remote'] = $item['version'];	
 			$new = version_compare($versions[$name]['remote'], $versions[$name]['local']);
 			$versions[$name]['new'] = $new; 
@@ -377,6 +378,8 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 			}
 			
 			foreach($data as $key => $info) {
+				
+				if(empty($info['name'])) continue;
 				
 				$name = $info['name'];
 				

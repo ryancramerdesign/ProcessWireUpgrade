@@ -21,7 +21,7 @@ class ProcessWireUpgrade extends Process {
 		return array(
 			'title' => 'Upgrades', 
 			'summary' => 'Tool that helps you identify and install core and module upgrades.', 
-			'version' => 9, 
+			'version' => 10, 
 			'author' => 'Ryan Cramer', 
 			'installs' => 'ProcessWireUpgradeCheck', 
 			'requires' => 'ProcessWire>=3.0.0',
@@ -180,14 +180,15 @@ class ProcessWireUpgrade extends Process {
 		
 		$lastRefresh = $this->session->getFor($this, 'lastRefresh');
 		
-		if(!$lastRefresh && method_exists($this->modules, 'resetCache')) {
+		if(!$lastRefresh || $lastRefresh < (time() - 86400)) {
 			$btn = $this->refreshButton();
 			$btn->value = $this->_('Continue');
 			$btn->icon = 'angle-right';
 			return
-				$this->h('We need to load the latest core and module versions from the ProcessWire modules directory.') . 
-				$this->p('This may take a few seconds to complete. Please click the button below to continue.') . 
-				$this->p($btn->render());
+				$this->h('We will load the latest core and module versions from the ProcessWire modules directory.') . 
+				$this->p('Please be patient, this may take a few seconds to complete.') . 
+				$this->p($btn->render()) .
+				$this->lastRefreshInfo(); 
 		}
 
 		return '';
@@ -223,9 +224,8 @@ class ProcessWireUpgrade extends Process {
 		
 		if(count($items)) { 
 			foreach($items as $name => $item) {
-				if(empty($item['remote'])) {
-					// not in directory
-				}
+				if(empty($item['local'])) continue;
+				if(empty($item['remote'])) { /* not in directory */ }
 				
 				$remote = $sanitizer->entities($item['remote']);
 				$installer = empty($item['installer']) ? '' : $sanitizer->entities($item['installer']);
@@ -281,13 +281,12 @@ class ProcessWireUpgrade extends Process {
 					if(!empty($item['pro'])) $title .= $proLabel;
 					
 				} else if(!empty($item['pro'])) {
+					$title = $this->a($upgradeURL, $title) . $proLabel;
 					if($item['new'] > 0) {
 						if(!empty($urls['support'])) $upgradeURL = $urls['support'];
 						$protip = 'PRO module upgrade available in ProcessWire VIP support board (login required)';
 						$upgrade = $this->tooltip($protip, $this->aa($upgradeURL, $upgradeLabel));
-						$title = $this->tooltip($protip, $this->aa($upgradeURL, $title) . $proLabel);
-					} else {
-						$title = $this->a($upgradeURL, $title) . $proLabel;
+						// $title = $this->tooltip($protip, $this->aa($upgradeURL, $title) . $proLabel);
 					}
 					$numPro++;
 					
@@ -306,12 +305,10 @@ class ProcessWireUpgrade extends Process {
 			}
 		}
 
-		$lastRefresh = $this->session->getFor($this, 'lastRefresh');
-		
 		return
 			$table->render() . 
-			$this->p(sprintf($this->_('Last refresh: %s'), wireRelativeTimeStr($lastRefresh)), 'description') . 
-			$this->refreshButton(true)->render();
+			$this->p($this->refreshButton(true)->render()) . 
+			$this->lastRefreshInfo();
 	}
 
 	/**
@@ -320,7 +317,7 @@ class ProcessWireUpgrade extends Process {
 	 */
 	public function executeRefresh() {
 		$this->session->setFor($this, 'lastRefresh', time());
-		$this->modules->resetCache();
+		if(method_exists($this->modules, 'resetCache')) $this->modules->resetCache();
 		$this->checker->getVersions(true);
 		$this->message($this->_('Refreshed module versions data'));
 		$this->session->redirect('./');
@@ -882,6 +879,19 @@ class ProcessWireUpgrade extends Process {
 		$btn->icon = 'refresh';
 		if($showInHeader && method_exists($btn, 'showInHeader')) $btn->showInHeader(true);
 		return $btn;
+	}
+
+	/**
+	 * @param bool $paragraph
+	 * @return string
+	 * 
+	 */
+	protected function lastRefreshInfo($paragraph = true) {
+		$lastRefresh = $this->session->getFor($this, 'lastRefresh');
+		$lastRefresh = $lastRefresh ? wireRelativeTimeStr($lastRefresh) : $this->_('N/A');
+		$out = sprintf($this->_('Last refresh: %s'), $lastRefresh);
+		if($paragraph) $out = $this->p($out, 'detail last-refresh-info');
+		return $out;
 	}
 
 	/**
