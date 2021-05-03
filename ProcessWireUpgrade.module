@@ -21,7 +21,7 @@ class ProcessWireUpgrade extends Process {
 		return array(
 			'title' => 'Upgrades', 
 			'summary' => 'Tool that helps you identify and install core and module upgrades.', 
-			'version' => 10, 
+			'version' => 11, 
 			'author' => 'Ryan Cramer', 
 			'installs' => 'ProcessWireUpgradeCheck', 
 			'requires' => 'ProcessWire>=3.0.0',
@@ -76,6 +76,7 @@ class ProcessWireUpgrade extends Process {
 
 	/**
 	 * API wired
+	 * 
 	 */
 	public function wired() {
 		$this->initPaths(); // duplication from construct intended
@@ -531,8 +532,15 @@ class ProcessWireUpgrade extends Process {
 		$wireTempPath = $this->tempPath . 'wire/'; // site/assets/cache/ProcessWireUpgrade/wire/
 		$wireNewName = "wire-$newVersion"; // wire-2.5.0
 
-		//$indexFile = $rootPath . "index.php"; // /path/to/root/index.php
-		//$htaccessFile = $rootPath . ".htaccess"; // /path/to/root/.htaccess
+		if(!$error && !is_dir($wireTempPath)) {
+			// adjust paths according to where they were unzipped, as needed
+			// need to drill down a level from extracted archive
+			// i.e. files[0] may be a dir like /ProcessWire-dev/
+			$rootTempPath = $this->tempPath . trim($files[0], '/') . '/';
+			$wireTempPath = $rootTempPath . "wire/";
+			if(!is_dir($wireTempPath)) $error = "Unable to find /wire/ directory in archive";
+		}
+
 		$indexNewName = "index-$newVersion.php"; // index-2.5.0.php
 		$htaccessNewName = "htaccess-$newVersion.txt"; // htaccess-2.5.0.txt
 		
@@ -570,18 +578,6 @@ class ProcessWireUpgrade extends Process {
 			$wireNewPath = $cacheUpgradePath . 'wire/';
 			$htaccessNewFile = $cacheUpgradePath . 'htaccess.txt';
 			$indexNewFile = $cacheUpgradePath . 'index.php';
-		}
-
-		if(!$error && !is_dir($wireTempPath)) {
-			// adjust paths according to where they were unzipped, as needed
-			// need to drill down a level from extracted archive
-			// i.e. files[0] may be a dir like /ProcessWire-dev/
-			$rootTempPath = $this->tempPath . trim($files[0], '/') . '/';
-			$wireTempPath = $rootTempPath . "wire/";
-		}
-
-		if(!$error && !is_dir($wireTempPath)) {
-			$error = "Unable to find /wire/ directory in archive";
 		}
 
 		if(!$error) {
