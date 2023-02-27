@@ -956,7 +956,7 @@ class ProcessWireUpgrade extends Process {
 		$page->name = self::pageName; 
 
 		// installs to the admin "Setup" menu ... change as you see fit
-		$page->parent = $this->pages->get($this->config->adminRootPageID)->child('name=setup');
+		$page->parent = $this->pages->get($this->config->adminRootPageID)->child('include=all, name=setup');
 		$page->process = $this; 
 
 		// we will make the page title the same as our module title
