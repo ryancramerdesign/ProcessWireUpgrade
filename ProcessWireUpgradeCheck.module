@@ -24,8 +24,8 @@ class ProcessWireUpgradeCheck extends WireData implements Module {
 	 */
 	public static function getModuleInfo() {
 		return array(
-			'title' => 'Upgrades Checker', 
-			'summary' => 'Automatically checks for core and installed module upgrades at routine intervals.', 
+			'title' => __('Upgrades Checker'), 
+			'summary' => __('Automatically checks for core and installed module upgrades at routine intervals.'), 
 			'version' => 9, 
 			'autoload' => "template=admin", 
 			'singular' => true, 

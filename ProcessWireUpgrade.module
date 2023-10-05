@@ -19,8 +19,8 @@ class ProcessWireUpgrade extends Process {
 	 */
 	public static function getModuleInfo() {
 		return array(
-			'title' => 'Upgrades', 
-			'summary' => 'Tool that helps you identify and install core and module upgrades.', 
+			'title' => __('Upgrades'), 
+			'summary' => __('Tool that helps you identify and install core and module upgrades.'), 
 			'version' => 11, 
 			'author' => 'Ryan Cramer', 
 			'installs' => 'ProcessWireUpgradeCheck', 
@@ -149,17 +149,17 @@ class ProcessWireUpgrade extends Process {
 		if(version_compare($phpVersion, self::minVersionPHP) >= 0) {
 			// good
 		} else {
-			$this->error("Please note that your current PHP version ($phpVersion) is not adequate to upgrade to the latest ProcessWire.");
+			$this->error($this->_("Please note that your current PHP version ($phpVersion) is not adequate to upgrade to the latest ProcessWire."));
 		}
 
 		if(!extension_loaded('pdo_mysql')) {
-			$this->error("Your PHP is not compiled with PDO support. PDO is required by ProcessWire.");
+			$this->error($this->_('Your PHP is not compiled with PDO support. PDO is required by ProcessWire.'));
 		}
 
 		if(!class_exists('\ZipArchive')) {
 			$this->warning(
-				"Your PHP does not have ZipArchive support. This is required to install core or module upgrades with this tool. " . 
-				"You can still use this tool to identify new versions and install them manually."
+				$this->_("Your PHP does not have ZipArchive support. This is required to install core or module upgrades with this tool. ") . 
+				$this->_("You can still use this tool to identify new versions and install them manually.")
 			);
 		}
 		
@@ -175,7 +175,7 @@ class ProcessWireUpgrade extends Process {
 			$btn->value = $this->_('Remove');
 			$btn->icon = 'trash-o';
 			return
-				$this->h('Upgrade files are already present. Please remove them before continuing.') . $this->ul($upgradePaths) . 
+				$this->h($this->_('Upgrade files are already present. Please remove them before continuing.')) . $this->ul($upgradePaths) . 
 				$this->p($btn->render());
 		}
 		
@@ -186,8 +186,8 @@ class ProcessWireUpgrade extends Process {
 			$btn->value = $this->_('Continue');
 			$btn->icon = 'angle-right';
 			return
-				$this->h('We will load the latest core and module versions from the ProcessWire modules directory.') . 
-				$this->p('Please be patient, this may take a few seconds to complete.') . 
+				$this->h($this->_('We will load the latest core and module versions from the ProcessWire modules directory.')) . 
+				$this->p($this->_('Please be patient, this may take a few seconds to complete.')) . 
 				$this->p($btn->render()) .
 				$this->lastRefreshInfo(); 
 		}
@@ -358,8 +358,8 @@ class ProcessWireUpgrade extends Process {
 		
 		if(!$config->debug) {
 			$this->error(
-				"While optional, we recommend that you enable debug mode during the upgrade so that you will see detailed error messages, should they occur. " . 
-				"Do this by editing /site/config.php and setting the debug option to true. Example: \$config->debug = true;"
+				$this->_("While optional, we recommend that you enable debug mode during the upgrade so that you will see detailed error messages, should they occur. ") . 
+				$this->_("Do this by editing /site/config.php and setting the debug option to true. Example: \$config->debug = true;")
 			); 
 		}
 
@@ -375,16 +375,16 @@ class ProcessWireUpgrade extends Process {
 		$result = version_compare($config->version, $branch['version']);
 
 		if($result < 0) { 
-			$msg = "The available version ($branch[version]) is newer than the one you currently have ($config->version).";
+			$msg = $this->_("The available version ($branch[version]) is newer than the one you currently have ($config->version).");
 
 		} else if($result > 0) {
-			$msg = "The available version ($branch[version]) is older than the one you currently have ($config->version).";
+			$msg = $this->_("The available version ($branch[version]) is older than the one you currently have ($config->version).");
 
 		} else {
-			$msg = "The available version is the same as the one you currently have.";
+			$msg = $this->_("The available version is the same as the one you currently have.");
 		}
 
-		$out = $this->h("Do you want to download and install ProcessWire $branch[name] version $branch[version]?") . $this->p($msg); 
+		$out = $this->h($this->_("Do you want to download and install ProcessWire $branch[name] version $branch[version]?")) . $this->p($msg); 
 		
 		/** @var InputfieldButton $btn */
 		$btn = $modules->get('InputfieldButton'); 
@@ -400,7 +400,7 @@ class ProcessWireUpgrade extends Process {
 		$btn->addClass('ui-priority-secondary'); 
 		$out .= $btn->render();
 
-		$out .= $this->p("After clicking the download button, be patient, as this may take a minute.", 'detail');
+		$out .= $this->p($this->_("After clicking the download button, be patient, as this may take a minute."), 'detail');
 
 		return $out; 
 	}
@@ -459,10 +459,10 @@ class ProcessWireUpgrade extends Process {
 				clearstatcache();
 				$bytes = filesize($file); 
 				$file = str_replace($config->paths->root, '/', $file); 
-				$this->message("Backup saved to $file ($bytes bytes) - Please note this location should you later need to restore it."); 
+				$this->message($this->_("Backup saved to $file ($bytes bytes) - Please note this location should you later need to restore it.")); 
 				$session->setFor($this, 'database', $file); 
 			} else {
-				$this->error("Database backup failed"); 
+				$this->error($this->_("Database backup failed")); 
 			}
 			$session->redirect('./prepare'); 
 		}
@@ -470,7 +470,7 @@ class ProcessWireUpgrade extends Process {
 		$out = $this->h('Database Backup'); 
 
 		if($canBackup) {
-			$out .= $this->p('Your version of ProcessWire supports automatic database backups.*');
+			$out .= $this->p($this->_('Your version of ProcessWire supports automatic database backups.*'));
 			
 			/** @var InputfieldButton $btn */
 			$btn = $modules->get('InputfieldButton'); 
@@ -486,13 +486,13 @@ class ProcessWireUpgrade extends Process {
 			$btn->addClass('ui-priority-secondary'); 
 			$out .= $btn->render();
 
-			$out .= $this->p('*We also recommend creating an independent database backup, for instance with PhpMyAdmin.', 'detail');
+			$out .= $this->p($this->_('*We also recommend creating an independent database backup, for instance with PhpMyAdmin.'), 'detail');
 
 		} else {
 			$out .= $this->p(
-				"Your current version of ProcessWire does not support automatic database backups. " . 
-				"We recommend making a backup of database `$config->dbName` using a tool like PhpMyAdmin. " . 
-				"Click the button below once you have saved a backup."
+				$this->_("Your current version of ProcessWire does not support automatic database backups. ") . 
+				$this->_("We recommend making a backup of database `$config->dbName` using a tool like PhpMyAdmin. ") . 
+				$this->_("Click the button below once you have saved a backup.")
 			);
 
 			/** @var InputfieldButton $btn */
@@ -595,26 +595,29 @@ class ProcessWireUpgrade extends Process {
 		$htaccessNewLabel = $rootWritable ? basename($htaccessNewFile) : str_replace($config->paths->root, '/', $htaccessNewFile);
 
 		$out = 	
-			$this->h('Upgrade files copied') . 
+			$this->h($this->_('Upgrade files copied')) . 
 			$this->p(
-				"We have prepared copies of upgrade files for installation. At this point, " .
-				"you may install them yourself by replacing the existing `/wire/` directory with `$wireNewLabel`, " . 
-				"and optionally `index.php` with `$indexNewLabel`, and `.htaccess` with `$htaccessNewLabel`. " . 
-				($rootWritable ? "Or, since your file system is writable, this tool can install them." : "Full instructions are below.")
+				$this->_("We have prepared copies of upgrade files for installation. At this point, ") .
+				$this->_("you may install them yourself by replacing the existing `/wire/` directory with `$wireNewLabel`, ") . 
+				$this->_("and optionally `index.php` with `$indexNewLabel`, and `.htaccess` with `$htaccessNewLabel`. ") . 
+				($rootWritable ? 
+					$this->_("Or, since your file system is writable, this tool can install them.") : 
+					$this->_("Full instructions are below.")
+				)
 			);
 		
 		$items = array();
 
 		if($indexIsOk) {
-			$items[] = "Your `index.php` file appears to be up-to-date, it should be okay to leave your existing one in place.";
+			$items[] = $this->_("Your `index.php` file appears to be up-to-date, it should be okay to leave your existing one in place.");
 		} else {
-			$items[] = "Your `index.php` file appears to need an update, check that you haven’t made any site-specific customizations to it before replacing it.";
+			$items[] = $this->_("Your `index.php` file appears to need an update, check that you haven’t made any site-specific customizations to it before replacing it.");
 		}
 
 		if($htaccessIsOk) {
-			$items[] = "Your `.htaccess` file appears to be up-to-date, it should be okay to leave your existing one in place.";
+			$items[] = $this->_("Your `.htaccess` file appears to be up-to-date, it should be okay to leave your existing one in place.");
 		} else {
-			$items[] = "Your `.htaccess` file appears to need an update, check for any site-specific customizations before replacing it. You may want to apply updates to it manually.";
+			$items[] = $this->_("Your `.htaccess` file appears to need an update, check for any site-specific customizations before replacing it. You may want to apply updates to it manually.");
 		}
 		
 		$out .= $this->ul($items);
@@ -623,12 +626,12 @@ class ProcessWireUpgrade extends Process {
 
 			$htaccessNote = '';
 			if(!$htaccessIsOk) {
-				$htaccessNote = 'Since the `.htaccess` file can often have site-specific customizations, it would be best to handle that one manually, unless you know it is unmodified.';
+				$htaccessNote = $this->_('Since the `.htaccess` file can often have site-specific customizations, it would be best to handle that one manually, unless you know it is unmodified.');
 			}
 				
 			$out .= 
-				$this->h('Want this tool to install the upgrade?') . 
-				$this->p("Check the boxes below for what you’d like us to install. $htaccessNote");
+				$this->h($this->_('Want this tool to install the upgrade?')) . 
+				$this->p($this->_("Check the boxes below for what you’d like us to install. $htaccessNote"));
 			
 
 			/** @var InputfieldSubmit $btn */
@@ -663,39 +666,39 @@ class ProcessWireUpgrade extends Process {
 			);
 
 			$out .= $this->p(
-				"Your file system is not writable so we can’t automatically install the upgrade files for you. " . 
-				"However, the files are ready for you to move to their destinations."
+				$this->_("Your file system is not writable so we can’t automatically install the upgrade files for you. ") . 
+				$this->_("However, the files are ready for you to move to their destinations.")
 			);
 
 			$out .= 
-				$this->h('Backup your existing files') . 
+				$this->h($this->_('Backup your existing files')) . 
 				$this->p(
-					"While optional, we strongly recommend making backups of everything replaced so that you can always revert back to it if needed. " . 
-					"We recommend doing this by performing the following file rename operations:"
+					$this->_("While optional, we strongly recommend making backups of everything replaced so that you can always revert back to it if needed. ") . 
+					$this->_("We recommend doing this by performing the following file rename operations:")
 				);
 			
 			$items = array();
 			foreach($backupInfo as $old => $new) {
-				$items[] = "Rename `$old` to `$new`";
+				$items[] = $this->_("Rename `$old` to `$new`");
 			}
 			$out .= $this->ul($items);
 
 			$out .= 
-				$this->h('Migrate the new files') . 
-				$this->p('Now you can migrate the new files, renaming them from their temporary location to their destination.'); 
+				$this->h($this->_('Migrate the new files')) . 
+				$this->p($this->_('Now you can migrate the new files, renaming them from their temporary location to their destination.')); 
 
 			$items = array();
 			foreach($renameInfo as $old => $new) {
 				$old = str_replace($config->paths->root, '/', $old); 
-				$items[] = "Rename `$old` to `$new`";
+				$items[] = $this->_("Rename `$old` to `$new`");
 			}
 			$out .= 
 				$this->ul($items) . 
-				$this->p('Once you’ve completed the above steps, your upgrade will be complete.') . 
+				$this->p($this->_('Once you’ve completed the above steps, your upgrade will be complete.')) . 
 				$this->completionNotes();
 		}
 
-		$out .= $this->p('*In many cases, it is not necessary to upgrade the index.php and .htaccess files since they don’t always change between versions.', 'detail');
+		$out .= $this->p($this->_('*In many cases, it is not necessary to upgrade the index.php and .htaccess files since they don’t always change between versions.'), 'detail');
 
 		return $this->out($out); 
 	}
@@ -739,8 +742,8 @@ class ProcessWireUpgrade extends Process {
 		}
 
 		$out = 
-			$this->h('Upgrade completed') . 
-			$this->p($this->b('Double check that everything works before you leave this page')) . 
+			$this->h($this->_('Upgrade completed')) . 
+			$this->p($this->b($this->_('Double check that everything works before you leave this page'))) . 
 			$this->completionNotes();
 
 		return $this->out($out); 
@@ -759,44 +762,44 @@ class ProcessWireUpgrade extends Process {
 		$dbFile = $this->session->getFor($this, 'database'); 
 		$dbNote = '';
 		
-		if($dbFile) $dbNote = "Your database was backed up to this file:<br />`$dbFile`";
+		if($dbFile) $dbNote = $this->_("Your database was backed up to this file:<br />`$dbFile`");
 		
 		$frontEndLink = $this->aa($config->urls->root, 'front-end'); 
 		$adminLink = $this->aa($config->urls->admin, 'admin'); 
 		$items = array();
 
-		$items[] = "Test out both the $frontEndLink and $adminLink of your site in full to make sure everything works.";
-		$items[] = "Installed files have permission `$config->chmodFile` and directories `$config->chmodDir`. Double check that these are safe with your web host, especially in a shared hosting environment.";
+		$items[] = $this->_("Test out both the $frontEndLink and $adminLink of your site in full to make sure everything works.");
+		$items[] = $this->_("Installed files have permission `$config->chmodFile` and directories `$config->chmodDir`. Double check that these are safe with your web host, especially in a shared hosting environment.");
 
 		if($config->debug) {
-			$items[] = "For production sites, remember to turn off debug mode once your upgrade is complete.";
+			$items[] = $this->_("For production sites, remember to turn off debug mode once your upgrade is complete.");
 		}
 		
 		$out = $this->ul($items);
 	
 		$out .= 
-			$this->p($this->b('If your upgrade did not work…')) . 
+			$this->p($this->b($this->_('If your upgrade did not work…'))) . 
 			$this->p(
-				'If you encounter fatal error messages (in the front-end or admin links above), hit reload/refresh in that browser tab until it clears (2-3 times). ' . 
-				'It may take a few requests for ProcessWire to apply any necessary database schema changes. ' . 
-				'Should you determine that the upgrade failed for some reason and you want to revert back to the previous version, ' . 
-				'below are the steps to undo what was just applied.'
+				$this->_('If you encounter fatal error messages (in the front-end or admin links above), hit reload/refresh in that browser tab until it clears (2-3 times). ') . 
+				$this->_('It may take a few requests for ProcessWire to apply any necessary database schema changes. ') . 
+				$this->_('Should you determine that the upgrade failed for some reason and you want to revert back to the previous version, ') . 
+				$this->_('below are the steps to undo what was just applied.')
 			) . 
-			$this->p('Step 1: Remove the installed updates by renaming or deleting them') . 
+			$this->p($this->_('Step 1: Remove the installed updates by renaming or deleting them')) . 
 			$this->ul(array(
-				"Delete `/wire/` directory OR rename it to `/.wire-$newVersion/`",
-				"If you replaced the `.htaccess` file: Delete `.htaccess` OR rename it to `.htaccess-$newVersion`", 
-				"If you replaced the `index.php` file: Delete `index.php` OR rename it to `.index-$newVersion.php`"
+				$this->_("Delete `/wire/` directory OR rename it to `/.wire-$newVersion/`"),
+				$this->_("If you replaced the `.htaccess` file: Delete `.htaccess` OR rename it to `.htaccess-$newVersion`"), 
+				$this->_("If you replaced the `index.php` file: Delete `index.php` OR rename it to `.index-$newVersion.php`")
 			)) . 
-			$this->p('Step 2: Restore backed up files') . 
+			$this->p($this->_('Step 2: Restore backed up files')) . 
 			$this->ul(array(
-				"Rename directory `/.wire-$oldVersion/` to `/wire/`",
+				$this->_("Rename directory `/.wire-$oldVersion/` to `/wire/`"),
 				"If applicable: Rename `.htaccess-$oldVersion` to `.htaccess`",
-				"If applicable: Rename `.index-$oldVersion.php` to `index.php`",
+				$this->_("If applicable: Rename `.index-$oldVersion.php` to `index.php`"),
 			));
 		
 		if($dbNote) $out .= 
-			$this->p('Step 3: Restore backed up database (if necessary)') . 
+			$this->p($this->_('Step 3: Restore backed up database (if necessary)')) . 
 			$this->ul(array($dbNote)); 
 			
 
@@ -840,18 +843,18 @@ class ProcessWireUpgrade extends Process {
 		}
 
 		if(file_exists($new)) {
-			$this->message("$_new already exists (we left it untouched)"); 
+			$this->message($this->_("$_new already exists (we left it untouched)")); 
 			return $result; 
 		}
 	
 		$result = rename($old, $new); 	
 
 		if($result) { 
-			$this->message("Renamed $_old => $_new"); 
+			$this->message($this->_("Renamed $_old => $_new")); 
 		} else {
-			$this->error("Unable to rename $_old => $_new"); 
+			$this->error($this->_("Unable to rename $_old => $_new")); 
 			if(basename(rtrim($new, '/')) == 'wire') {
-				throw new WireException("Upgrade aborted. Unable to rename $_old => $_new"); 
+				throw new WireException($this->_("Upgrade aborted. Unable to rename $_old => $_new")); 
 			}
 		}
 
@@ -904,15 +907,15 @@ class ProcessWireUpgrade extends Process {
 					$newPath2 = $newPath . "-" . (++$n); 
 				} while(file_exists($newPath2)); 
 				if(rename($newPath, $newPath2)) {
-					$this->message("Renamed $newPath => $newPath2");
+					$this->message($this->_("Renamed $newPath => $newPath2"));
 				}
 			}
 			$old = basename(rtrim($oldPath, '/')); 
 			$new = basename(rtrim($newPath, '/')); 
 			if(rename($oldPath, $newPath)) {
-				$this->message("Renamed $old => $new"); 
+				$this->message($this->_("Renamed $old => $new")); 
 			} else {
-				$this->error("Unable to rename $old => $new"); 		
+				$this->error($this->_("Unable to rename $old => $new")); 		
 			}
 		}
 		$this->renames = array();
